@@ -14,10 +14,10 @@ import (
 // RP2040 PIO peripheral handles.
 var (
 	PIO0 = &PIO{
-		HW: rp.PIO0,
+		hw: rp.PIO0,
 	}
 	PIO1 = &PIO{
-		HW: rp.PIO1,
+		hw: rp.PIO1,
 	}
 )
 
@@ -27,12 +27,15 @@ var (
 	ErrNoSpaceAtOffset   = errors.New("pio: program space unavailable at offset")
 )
 
+const badStateMachineIndex = "invalid state machine index"
+const badPIO = "invalid PIO"
+
 // PIO represents one of the two PIO peripherals in the RP2040
 type PIO struct {
 	// Bitmask of used instruction space
 	usedSpaceMask uint32
 	// HW is the actual hardware device
-	HW *rp.PIO0_Type
+	hw *rp.PIO0_Type
 }
 
 // StateMachine represents one of the four state machines in a PIO
@@ -51,19 +54,19 @@ func (sm StateMachine) StateMachineIndex() uint8 {
 
 // BlockIndex returns 0 or 1 depending on whether the underlying device is PIO0 or PIO1.
 func (pio *PIO) BlockIndex() uint8 {
-	switch pio.HW {
+	switch pio.hw {
 	case rp.PIO0:
 		return 0
 	case rp.PIO1:
 		return 1
 	}
-	panic("invalid PIO")
+	panic(badPIO)
 }
 
 // StateMachine returns a state machine by index.
 func (pio *PIO) StateMachine(index uint8) StateMachine {
 	if index > 3 {
-		panic("invalid state machine index")
+		panic(badStateMachineIndex)
 	}
 	return StateMachine{
 		pio:   pio,
@@ -126,7 +129,7 @@ func (pio *PIO) CanAddProgramAtOffset(instructions []uint16, origin int8, offset
 func (pio *PIO) writeInstructionMemory(offset uint8, value uint16) {
 	// Instead of using MEM0, MEM1, etc, calculate the offset of the
 	// disired register starting at MEM0
-	start := unsafe.Pointer(&pio.HW.INSTR_MEM0)
+	start := unsafe.Pointer(&pio.hw.INSTR_MEM0)
 
 	// Instruction Memory registers are 32-bit, with only lower 16 used
 	reg := (*volatile.Register32)(unsafe.Pointer(uintptr(start) + uintptr(offset)*4))
@@ -166,9 +169,14 @@ func (pio *PIO) findOffsetForProgram(instructions []uint16, origin int8) int8 {
 // cfg is optional.  If the zero value of StateMachineConfig is used
 // then the default configuration is used.
 func (sm StateMachine) Init(initialPC uint8, cfg StateMachineConfig) {
+	sm.PIO().BlockIndex() // Panic if PIO or state machine not at valid offset.
+	if sm.index > 3 {
+		panic(badStateMachineIndex)
+	}
+
 	// Halt the state machine to set sensible defaults
 	sm.SetEnabled(false)
-	sm.IsTxFIFOEmpty()
+
 	if cfg == (StateMachineConfig{}) {
 		cfg = DefaultStateMachineConfig()
 		sm.SetConfig(cfg)
@@ -183,30 +191,36 @@ func (sm StateMachine) Init(initialPC uint8, cfg StateMachineConfig) {
 		(1 << rp.PIO0_FDEBUG_RXUNDER_Pos) |
 		(1 << rp.PIO0_FDEBUG_TXSTALL_Pos) |
 		(1 << rp.PIO0_FDEBUG_RXSTALL_Pos))
-	sm.pio.HW.FDEBUG.Set(fdebugMask << sm.index)
+	sm.pio.hw.FDEBUG.Set(fdebugMask << sm.index)
 
 	sm.Restart()
 	sm.ClkDivRestart()
 	sm.Exec(EncodeJmp(uint16(initialPC)))
 }
 
+func (pio *PIO) HW() *rp.PIO0_Type { return pio.hw }
+
 // SetEnabled controls whether the state machine is running
 func (sm StateMachine) SetEnabled(enabled bool) {
-	sm.pio.HW.CTRL.ReplaceBits(boolToBit(enabled), 0x1, sm.index)
+	sm.pio.hw.CTRL.ReplaceBits(boolToBit(enabled), 0x1, sm.index)
 }
 
 // Restart restarts the state machine
 func (sm StateMachine) Restart() {
-	sm.pio.HW.CTRL.SetBits(1 << (rp.PIO0_CTRL_SM_RESTART_Pos + sm.index))
+	sm.pio.hw.CTRL.SetBits(1 << (rp.PIO0_CTRL_SM_RESTART_Pos + sm.index))
 }
 
 // Restart a state machine clock divider with a phase of 0
 func (sm StateMachine) ClkDivRestart() {
-	sm.pio.HW.CTRL.SetBits(1 << (rp.PIO0_CTRL_CLKDIV_RESTART_Pos + sm.index))
+	sm.pio.hw.CTRL.SetBits(1 << (rp.PIO0_CTRL_CLKDIV_RESTART_Pos + sm.index))
 }
 
 // SetConfig applies state machine configuration to a state machine
 func (sm StateMachine) SetConfig(cfg StateMachineConfig) {
+	sm.PIO().BlockIndex() // Panic if PIO or state machine not at valid offset.
+	if sm.index > 3 {
+		panic(badStateMachineIndex)
+	}
 	hw := sm.HW()
 	hw.CLKDIV.Set(cfg.ClkDiv)
 	hw.EXECCTRL.Set(cfg.ExecCtrl)
@@ -216,14 +230,14 @@ func (sm StateMachine) SetConfig(cfg StateMachineConfig) {
 
 // tx gets a pointer to the TX FIFO register for this state machine.
 func (sm StateMachine) tx() *volatile.Register32 {
-	start := unsafe.Pointer(&sm.pio.HW.TXF0)
+	start := unsafe.Pointer(&sm.pio.hw.TXF0)
 	offset := uintptr(sm.index) * 4
 	return (*volatile.Register32)(unsafe.Pointer(uintptr(start) + offset))
 }
 
 // rx gets a pointer to the RX FIFO register for this state machine.
 func (sm StateMachine) rx() *volatile.Register32 {
-	start := unsafe.Pointer(&sm.pio.HW.RXF0)
+	start := unsafe.Pointer(&sm.pio.hw.RXF0)
 	offset := uintptr(sm.index) * 4
 	return (*volatile.Register32)(unsafe.Pointer(uintptr(start) + offset))
 }
@@ -273,7 +287,7 @@ func (sm StateMachine) RxGet() uint32 {
 func (sm StateMachine) RxFIFOLevel() uint32 {
 	const mask = rp.PIO0_FLEVEL_RX0_Msk >> rp.PIO0_FLEVEL_RX0_Pos
 	bitoffs := rp.PIO0_FLEVEL_RX0_Pos + sm.index*(rp.PIO0_FLEVEL_RX1_Pos-rp.PIO0_FLEVEL_RX0_Pos)
-	return (sm.pio.HW.FLEVEL.Get() >> uint32(bitoffs)) & mask
+	return (sm.pio.hw.FLEVEL.Get() >> uint32(bitoffs)) & mask
 }
 
 // TxFIFOLevel returns the number of elements currently in a state machine's TX FIFO.
@@ -281,27 +295,27 @@ func (sm StateMachine) RxFIFOLevel() uint32 {
 func (sm StateMachine) TxFIFOLevel() uint32 {
 	const mask = rp.PIO0_FLEVEL_TX0_Msk >> rp.PIO0_FLEVEL_TX0_Pos
 	bitoffs := rp.PIO0_FLEVEL_TX0_Pos + sm.index*(rp.PIO0_FLEVEL_TX1_Pos-rp.PIO0_FLEVEL_TX0_Pos)
-	return (sm.pio.HW.FLEVEL.Get() >> uint32(bitoffs)) & mask
+	return (sm.pio.hw.FLEVEL.Get() >> uint32(bitoffs)) & mask
 }
 
 // IsTxFIFOEmpty returns true if state machine's TX FIFO is empty.
 func (sm StateMachine) IsTxFIFOEmpty() bool {
-	return (sm.pio.HW.FSTAT.Get() & (1 << (rp.PIO0_FSTAT_TXEMPTY_Pos + sm.index))) != 0
+	return (sm.pio.hw.FSTAT.Get() & (1 << (rp.PIO0_FSTAT_TXEMPTY_Pos + sm.index))) != 0
 }
 
 // IsTxFIFOFull returns true if state machine's TX FIFO is full.
 func (sm StateMachine) IsTxFIFOFull() bool {
-	return (sm.pio.HW.FSTAT.Get() & (1 << (rp.PIO0_FSTAT_TXFULL_Pos + sm.index))) != 0
+	return (sm.pio.hw.FSTAT.Get() & (1 << (rp.PIO0_FSTAT_TXFULL_Pos + sm.index))) != 0
 }
 
 // IsRxFIFOEmpty returns true if state machine's RX FIFO is empty.
 func (sm StateMachine) IsRxFIFOEmpty() bool {
-	return (sm.pio.HW.FSTAT.Get() & (1 << (rp.PIO0_FSTAT_RXEMPTY_Pos + sm.index))) != 0
+	return (sm.pio.hw.FSTAT.Get() & (1 << (rp.PIO0_FSTAT_RXEMPTY_Pos + sm.index))) != 0
 }
 
 // IsRxFIFOFull returns true if state machine's RX FIFO is full.
 func (sm StateMachine) IsRxFIFOFull() bool {
-	return (sm.pio.HW.FSTAT.Get() & (1 << (rp.PIO0_FSTAT_RXFULL_Pos + sm.index))) != 0
+	return (sm.pio.hw.FSTAT.Get() & (1 << (rp.PIO0_FSTAT_RXFULL_Pos + sm.index))) != 0
 }
 
 // ClearFIFOs clears the TX and RX FIFOs of a state machine.
@@ -334,10 +348,10 @@ func (sm StateMachine) PIO() *PIO { return sm.pio }
 
 func (pio *PIO) smHW(index uint8) *statemachineHW {
 	if index > 3 {
-		panic("invalid state machine index")
+		panic(badStateMachineIndex)
 	}
 	const size = unsafe.Sizeof(statemachineHW{})  // 24 bytes.
-	ptrBase := unsafe.Pointer(&pio.HW.SM0_CLKDIV) // 0xC8
+	ptrBase := unsafe.Pointer(&pio.hw.SM0_CLKDIV) // 0xC8
 	ptr := uintptr(ptrBase) + uintptr(index)*size
 	return (*statemachineHW)(unsafe.Pointer(uintptr(ptr)))
 }

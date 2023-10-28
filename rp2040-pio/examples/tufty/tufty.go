@@ -48,8 +48,8 @@ func main() {
 	dmaConfig := getDefaultDMAConfig(display.dmaChannel)
 	setTransferDataSize(dmaConfig, DMA_SIZE_8)
 	setBSwap(dmaConfig, false)
-	setDREQ(dmaConfig, display.pio.HW.GetIRQ())
-	dmaChannelConfigure(display.dmaChannel, dmaConfig, display.pio.HW.TXF0.Reg, 0, 0, false)
+	setDREQ(dmaConfig, display.pio.HW().GetIRQ())
+	dmaChannelConfigure(display.dmaChannel, dmaConfig, display.pio.HW().TXF0.Reg, 0, 0, false)
 
 	rdPin.High()
 
