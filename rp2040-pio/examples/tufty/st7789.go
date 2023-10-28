@@ -10,7 +10,6 @@ import (
 	"unsafe"
 
 	pio "github.com/tinygo-org/pio/rp2040-pio"
-	"tinygo.org/x/drivers"
 )
 
 // ST7789 wraps a Parallel ST7789 Display
@@ -32,7 +31,7 @@ type ST7789 struct {
 	// General Display Stuff
 	width    uint16
 	height   uint16
-	rotation drivers.Rotation
+	rotation Rotation
 
 	//Copied stuff from the TinyGo Drivers implementation
 	buf [6]byte
@@ -132,16 +131,16 @@ func (st *ST7789) CommonInit() {
 	}
 }
 
-func (st *ST7789) configureDisplayRotation(rotation drivers.Rotation) {
+func (st *ST7789) configureDisplayRotation(rotation Rotation) {
 	var madctl uint8
 	var rotate180 bool
 	caset := []uint16{0, 0}
 	raset := []uint16{0, 0}
 
-	if rotation == drivers.Rotation180 || rotation == drivers.Rotation90 {
+	if rotation == Rotation180 || rotation == Rotation90 {
 		rotate180 = true
 	}
-	if rotation == drivers.Rotation90 || rotation == drivers.Rotation270 {
+	if rotation == Rotation90 || rotation == Rotation270 {
 		st.width, st.height = st.height, st.width
 	}
 
