@@ -16,7 +16,7 @@ type pioParallel struct {
 	dmaChannel uint32
 }
 
-const noDMA uint32 = 0xffff_ffff
+const NoDMA uint32 = 0xffff_ffff
 
 func NewPIOParallel(sm pio.StateMachine, dStart, wr machine.Pin) (*pioParallel, error) {
 	Pio := sm.PIO()
@@ -28,11 +28,11 @@ func NewPIOParallel(sm pio.StateMachine, dStart, wr machine.Pin) (*pioParallel, 
 
 	sm.SetEnabled(true)
 
-	return &pioParallel{sm: sm, dmaChannel: noDMA}, nil
+	return &pioParallel{sm: sm, dmaChannel: NoDMA}, nil
 }
 
 func (pl *pioParallel) Write(data []uint8) {
-	if pl.dmaChannel != noDMA {
+	if pl.dmaChannel != NoDMA {
 		pl.dmaWrite(data)
 		return
 	}
@@ -55,6 +55,10 @@ func (pl *pioParallel) Write(data []uint8) {
 func (pl *pioParallel) EnableDMA(dmaChan uint32) error {
 	if !pl.sm.IsValid() {
 		return errors.New("PIO Statemachine needs initializing") //Not initialized
+	}
+	pl.dmaChannel = dmaChan // DMA enabled
+	if dmaChan == NoDMA {
+		return nil
 	}
 	pioHW := pl.sm.PIO().HW()
 	dmaConfig := getDefaultDMAConfig(dmaChan)
