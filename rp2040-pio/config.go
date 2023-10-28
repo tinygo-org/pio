@@ -143,3 +143,10 @@ func (cfg *StateMachineConfig) SetFIFOJoin(join FifoJoin) {
 	cfg.ShiftCtrl = (cfg.ShiftCtrl & ^uint32(rp.PIO0_SM0_SHIFTCTRL_FJOIN_TX_Msk|rp.PIO0_SM0_SHIFTCTRL_FJOIN_RX_Msk)) |
 		(uint32(join) << rp.PIO0_SM0_SHIFTCTRL_FJOIN_TX_Pos)
 }
+
+func boolToBit(b bool) uint32 {
+	if b {
+		return 1
+	}
+	return 0
+}

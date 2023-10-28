@@ -23,13 +23,12 @@ func main() {
 	blinkPinForever(Pio.StateMachine(0), offset, machine.LED, 3)
 	blinkPinForever(Pio.StateMachine(1), offset, machine.GPIO6, 4)
 	blinkPinForever(Pio.StateMachine(2), offset, machine.GPIO11, 1)
-	select {}
 }
 
 func blinkPinForever(sm pio.StateMachine, offset uint8, pin machine.Pin, freq uint) {
 	blinkProgramInit(sm, offset, pin)
-	sm.SetEnabled(true)
 	const clockFreq = 125000000
+	sm.SetEnabled(true)
 	println("Blinking", int(pin), "at", freq, "Hz")
 	sm.TxPut(uint32(clockFreq / (2 * freq)))
 }
