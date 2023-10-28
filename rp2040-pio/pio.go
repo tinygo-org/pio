@@ -6,6 +6,7 @@ package pio
 import (
 	"device/rp"
 	"errors"
+	"machine"
 	"runtime/volatile"
 	"unsafe"
 )
@@ -171,4 +172,9 @@ func (pio *PIO) smHW(index uint8) *statemachineHW {
 	ptr := uintptr(ptrBase) + uintptr(index)*size
 
 	return (*statemachineHW)(unsafe.Pointer(uintptr(ptr)))
+}
+
+// PinMode returns the PinMode for a PIO state machine, either PIO0 or PIO1.
+func (pio *PIO) PinMode() machine.PinMode {
+	return machine.PinPIO0 + machine.PinMode(pio.BlockIndex())
 }

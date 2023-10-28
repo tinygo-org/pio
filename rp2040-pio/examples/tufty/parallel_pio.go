@@ -38,7 +38,7 @@ const st7789_parallelOrigin = -1
 func st7789_parallelProgramDefaultConfig(offset uint8) pio.StateMachineConfig {
 	cfg := pio.DefaultStateMachineConfig()
 	cfg.SetWrap(offset+st7789_parallelWrapTarget, offset+st7789_parallelWrap)
-	cfg.SetSidesetParams(1, false, false)
+	cfg.SetSideSet(1, false, false)
 	return cfg;
 }
 

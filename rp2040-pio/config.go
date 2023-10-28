@@ -123,9 +123,12 @@ func (cfg *StateMachineConfig) SetOutPins(base machine.Pin, count uint8) {
 type FifoJoin int
 
 const (
-	FIFO_JOIN_NONE FifoJoin = iota
-	FIFO_JOIN_TX
-	FIFO_JOIN_RX
+	// FifoJoinNone is the default FIFO joining configuration. The RX and TX FIFOs are separate and of length 4 each.
+	FifoJoinNone FifoJoin = iota
+	// FifoJoinTx joins the RX and TX FIFOs into a single TX FIFO of depth 8.
+	FifoJoinTx
+	// FifoJoinRx joins the RX and TX FIFOs into a single RX FIFO of depth 8.
+	FifoJoinRx
 )
 
 // SetFIFOJoin Setup the FIFO joining in a state machine configuration.
@@ -137,7 +140,7 @@ func (cfg *StateMachineConfig) SetFIFOJoin(join FifoJoin) {
 		                   (((uint)join) << PIO_SM0_SHIFTCTRL_FJOIN_TX_LSB);
 		}
 	*/
-	if join > FIFO_JOIN_RX {
+	if join > FifoJoinRx {
 		panic("SetFIFOJoin: join")
 	}
 	cfg.ShiftCtrl = (cfg.ShiftCtrl & ^uint32(rp.PIO0_SM0_SHIFTCTRL_FJOIN_TX_Msk|rp.PIO0_SM0_SHIFTCTRL_FJOIN_RX_Msk)) |

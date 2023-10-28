@@ -7,8 +7,7 @@ import (
 )
 // this is a raw helper function for use by the user which sets up the GPIO output, and configures the SM to output on a particular pin
 func blinkProgramInit(sm pio.StateMachine, offset uint8, pin machine.Pin) {
-	mode := machine.PinPIO0+machine.PinMode(sm.PIO().BlockIndex())
-	pin.Configure(machine.PinConfig{Mode: mode})
+	pin.Configure(machine.PinConfig{Mode: sm.PIO().PinMode()})
 	sm.SetConsecutivePinDirs(pin, 1, true)
 	cfg := blinkProgramDefaultConfig(offset)
 	cfg.SetOutPins(pin, 1)
