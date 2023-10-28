@@ -13,7 +13,7 @@ func parallelST7789Init(sm pio.StateMachine, offset uint8, d0_pin machine.Pin, w
     sm.SetConsecutivePinDirs(d0_pin, 8, true)
     cfg := st7789_parallelProgramDefaultConfig(offset)
     cfg.SetOutPins(d0_pin, 8)
-    cfg.SetSidesetBase(wr_pin)
+    cfg.SetSidesetPins(wr_pin)
     cfg.SetFIFOJoin(pio.FIFO_JOIN_TX)
 	cfg.SetOutShift(false, true, 8)
     maxPIOClk := uint32(32 * machine.MHz)
@@ -38,7 +38,7 @@ const st7789_parallelOrigin = -1
 func st7789_parallelProgramDefaultConfig(offset uint8) pio.StateMachineConfig {
 	cfg := pio.DefaultStateMachineConfig()
 	cfg.SetWrap(offset+st7789_parallelWrapTarget, offset+st7789_parallelWrap)
-	cfg.SetSideset(1, false, false)
+	cfg.SetSidesetParams(1, false, false)
 	return cfg;
 }
 

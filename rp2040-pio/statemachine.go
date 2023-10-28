@@ -88,20 +88,6 @@ func (sm StateMachine) SetConfig(cfg StateMachineConfig) {
 	hw.PINCTRL.Set(cfg.PinCtrl)
 }
 
-// tx gets a pointer to the TX FIFO register for this state machine.
-func (sm StateMachine) tx() *volatile.Register32 {
-	start := unsafe.Pointer(&sm.pio.hw.TXF0) // 0x10
-	offset := uintptr(sm.index) * 4
-	return (*volatile.Register32)(unsafe.Pointer(uintptr(start) + offset))
-}
-
-// rx gets a pointer to the RX FIFO register for this state machine.
-func (sm StateMachine) rx() *volatile.Register32 {
-	start := unsafe.Pointer(&sm.pio.hw.RXF0) // 0x20
-	offset := uintptr(sm.index) * 4
-	return (*volatile.Register32)(unsafe.Pointer(uintptr(start) + offset))
-}
-
 // SetConsecurityPinDirs sets a range of pins to either 'in' or 'out'.
 func (sm StateMachine) SetConsecutivePinDirs(pin machine.Pin, count uint8, isOut bool) {
 	hw := sm.HW()
@@ -141,6 +127,20 @@ func (sm StateMachine) TxPut(data uint32) {
 func (sm StateMachine) RxGet() uint32 {
 	reg := sm.rx()
 	return reg.Get()
+}
+
+// tx gets a pointer to the TX FIFO register for this state machine.
+func (sm StateMachine) tx() *volatile.Register32 {
+	start := unsafe.Pointer(&sm.pio.hw.TXF0) // 0x10
+	offset := uintptr(sm.index) * 4
+	return (*volatile.Register32)(unsafe.Pointer(uintptr(start) + offset))
+}
+
+// rx gets a pointer to the RX FIFO register for this state machine.
+func (sm StateMachine) rx() *volatile.Register32 {
+	start := unsafe.Pointer(&sm.pio.hw.RXF0) // 0x20
+	offset := uintptr(sm.index) * 4
+	return (*volatile.Register32)(unsafe.Pointer(uintptr(start) + offset))
 }
 
 // RxFIFOLevel returns the number of elements currently in a state machine's RX FIFO.

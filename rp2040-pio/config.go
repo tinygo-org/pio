@@ -81,13 +81,13 @@ func (cfg *StateMachineConfig) SetOutShift(shiftRight bool, autoPush bool, pushT
 		(uint32(pushThreshold&0x1f) << rp.PIO0_SM0_SHIFTCTRL_PULL_THRESH_Pos)
 }
 
-// SetSideset sets the sideset parameters in a state machine configuration.
+// SetSidesetParams sets the side-set parameters in a state machine configuration.
 //   - bitcount is number of bits to steal from delay field in the instruction for use of side set (max 5).
 //   - optional is true if the topmost side set bit is used as a flag for whether to apply side set on that instruction.
 //   - pindirs is true if the side-set affects pin directions rather than values.
 //
 // Note: Function used by pico-sdk's pioasm tool so signature MUST remain the same.
-func (cfg *StateMachineConfig) SetSideset(bitCount uint8, optional bool, pindirs bool) {
+func (cfg *StateMachineConfig) SetSidesetParams(bitCount uint8, optional bool, pindirs bool) {
 	if bitCount > 5 {
 		panic("SetSideSet: bitCount")
 	}
@@ -99,9 +99,9 @@ func (cfg *StateMachineConfig) SetSideset(bitCount uint8, optional bool, pindirs
 		(boolToBit(pindirs) << rp.PIO0_SM0_EXECCTRL_SIDE_PINDIR_Pos)
 }
 
-// SetSidesetBase sets the lowest-numbered pin that will be affected by a side-set
+// SetSidesetPins sets the lowest-numbered pin that will be affected by a side-set
 // operation.
-func (cfg *StateMachineConfig) SetSidesetBase(firstPin machine.Pin) {
+func (cfg *StateMachineConfig) SetSidesetPins(firstPin machine.Pin) {
 	cfg.PinCtrl = (cfg.PinCtrl & ^uint32(rp.PIO0_SM0_PINCTRL_SIDESET_BASE_Msk)) |
 		(uint32(firstPin) << rp.PIO0_SM0_PINCTRL_SIDESET_BASE_Pos)
 }
