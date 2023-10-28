@@ -27,13 +27,12 @@ func parallelST7789Init(sm pio.StateMachine, offset uint8, dStart machine.Pin, w
 // st7789_parallel
 
 const st7789_parallelWrapTarget = 0
-const st7789_parallelWrap = 2
+const st7789_parallelWrap = 1
 
 var st7789_parallelInstructions = []uint16{
 		//     .wrap_target
-		0x80a0, //  0: pull   block           side 0     
-		0x6008, //  1: out    pins, 8         side 0     
-		0xb042, //  2: nop                    side 1     
+		0x6008, //  0: out    pins, 8         side 0     
+		0xb042, //  1: nop                    side 1     
 		//     .wrap
 }
 const st7789_parallelOrigin = -1

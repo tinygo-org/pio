@@ -1,5 +1,7 @@
 package pio
 
+import "math"
+
 // This file contains the primitives for creating instructions dynamically
 const (
 	INSTR_BITS_JMP  = 0x0000
@@ -155,4 +157,19 @@ func EncodeSet(dest SrcDest, value uint16) uint16 {
 
 func EncodeNOP() uint16 {
 	return EncodeMov(SrcDestY, SrcDestY)
+}
+
+// period a fixed point value in nanoseconds. freq in Hz.
+func clkdivPeriod(period, freq uint32) (whole uint16, frac uint8) {
+	//  freq = 256*clockfreq / (256*whole + frac)
+	// where period = 1e9/freq => freq = 1e9/period, so:
+	//  1e9/period = 256*clockfreq / (256*whole + frac) =>
+	//  256*whole + frac = 256*clockfreq*period/1e9
+	clkdiv := 256 * int64(period) * int64(freq) / int64(1e9)
+	if clkdiv > 256*math.MaxUint16 {
+		panic("clkdivPeriod: period or CPU frequency too large")
+	}
+	whole = uint16(clkdiv / 256)
+	frac = uint8(clkdiv % 256)
+	return whole, frac
 }
