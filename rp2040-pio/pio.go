@@ -75,8 +75,9 @@ func (pio *PIO) AddProgram(instructions []uint16, origin int8) (offset uint8, _ 
 	if maybeOffset < 0 {
 		return 0, ErrOutOfProgramSpace
 	}
-	pio.AddProgramAtOffset(instructions, origin, uint8(offset))
-	return uint8(maybeOffset), nil
+	offset = uint8(maybeOffset)
+	pio.AddProgramAtOffset(instructions, origin, offset)
+	return offset, nil
 }
 
 // AddProgramAtOffset loads a PIO program into PIO memory at a specific offset
