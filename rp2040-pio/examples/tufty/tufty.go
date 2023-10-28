@@ -24,31 +24,24 @@ func main() {
 	time.Sleep(5 * time.Second)
 	println("Initializing Display")
 	display := ST7789{
-		cs:                csPin,
-		dc:                dcPin,
-		wr:                wrPin,
-		rd:                rdPin,
-		d0:                db0Pin,
-		bl:                blPin,
-		stateMachineIndex: 0,
-		dmaChannel:        2,
-		width:             320,
-		height:            240,
-		rotation:          Rotation0,
+		cs:       csPin,
+		dc:       dcPin,
+		rd:       rdPin,
+		bl:       blPin,
+		width:    320,
+		height:   240,
+		rotation: Rotation0,
 	}
 
 	println("Initializing PIO")
-	display.pio = pio.PIO0
 	println("Parallel Init")
-	display.ParallelInit()
-
+	err := display.ParallelInit(pio.PIO0.StateMachine(0), db0Pin, wrPin)
+	if err != nil {
+		panic(err.Error())
+	}
+	display.pl.Write([]byte("Hello World"))
 	// Setup DMA
 	println("Setting Up DMA")
-	dmaConfig := getDefaultDMAConfig(display.dmaChannel)
-	setTransferDataSize(dmaConfig, DMA_SIZE_8)
-	setBSwap(dmaConfig, false)
-	setDREQ(dmaConfig, display.pio.HW().GetIRQ())
-	dmaChannelConfigure(display.dmaChannel, dmaConfig, display.pio.HW().TXF0.Reg, 0, 0, false)
 
 	rdPin.High()
 

@@ -2,12 +2,10 @@
 package main
 
 import (
-	"device/rp"
 	"errors"
 	"image/color"
 	"machine"
 	"time"
-	"unsafe"
 
 	pio "github.com/tinygo-org/pio/rp2040-pio"
 )
@@ -17,16 +15,10 @@ type ST7789 struct {
 	// Pins
 	cs machine.Pin
 	dc machine.Pin
-	wr machine.Pin
 	rd machine.Pin
-	d0 machine.Pin
 	bl machine.Pin
 
-	// Parallel Stuff
-	stateMachineIndex uint8
-	pio               *pio.PIO
-	parallelOffset    uint32
-	dmaChannel        uint32
+	pl *pioParallel
 
 	// General Display Stuff
 	width    uint16
@@ -39,13 +31,9 @@ type ST7789 struct {
 
 // ParallelInit initializes everything necessary to communicate with the display
 // using an 8-bit parallel connection
-func (st *ST7789) ParallelInit() {
-	offset, err := st.pio.AddProgram(st7789_parallelInstructions, st7789_parallelOrigin)
-	if err != nil {
-		panic(err.Error())
-	}
-	sm := st.pio.StateMachine(st.stateMachineIndex)
-	parallelST7789Init(sm, offset, st.d0, st.wr)
+func (st *ST7789) ParallelInit(sm pio.StateMachine, d0, wr machine.Pin) (err error) {
+	st.pl, err = NewPIOParallel(sm, d0, wr)
+	return err
 }
 
 func (st *ST7789) SetBacklight(on bool) {
@@ -168,47 +156,15 @@ func (st *ST7789) configureDisplayRotation(rotation Rotation) {
 func (st *ST7789) command(command byte, data []byte) {
 	st.dc.Low()
 	st.cs.Low()
-
-	st.writeBlockingParallel([]byte{command}, 1)
+	st.pl.Write([]byte{command})
+	// st.writeBlockingParallel([]byte{command}, 1)
 
 	if len(data) > 0 {
 		st.dc.High()
-		st.writeBlockingParallel(data, len(data))
+		st.pl.Write(data)
+		// st.writeBlockingParallel(data, len(data))
 	}
 	st.cs.High()
-}
-
-func (st *ST7789) writeBlockingDMA(data []byte, length int) {
-	// Wait for channel to not be busy
-	println("Waiting for DMA Channel to not be busy")
-	for dmaChannels[st.dmaChannel].CTRL_TRIG.Get()&rp.DMA_CH0_CTRL_TRIG_BUSY != 0 {
-		//noop
-	}
-
-	println("Writing Data")
-	readAddr := uint32(uintptr(unsafe.Pointer(&data[0])))
-	println("Read Addr: ", readAddr)
-	println("Length: ", length)
-	dmaChannels[st.dmaChannel].TRANS_COUNT.Set(uint32(length))
-	dmaChannels[st.dmaChannel].READ_ADDR.Set(uint32(readAddr))
-	dmaChannels[st.dmaChannel].CTRL_TRIG.Set(dmaChannels[st.dmaChannel].CTRL_TRIG.Get() | rp.DMA_CH0_CTRL_TRIG_EN)
-}
-
-func (st *ST7789) writeBlockingParallel(data []byte, length int) {
-	println("writeBlockingDMA")
-	println("Data: ", data)
-	st.writeBlockingDMA(data, length)
-	// Wait for channel to not be busy
-	println("Waiting for DMA Channel to not be busy again...")
-	for dmaChannels[st.dmaChannel].CTRL_TRIG.Get()&rp.DMA_CH0_CTRL_TRIG_BUSY != 0 {
-		//println(machine.DMAChannels[st.dmaChannel].CTRL_TRIG.Get() & rp.DMA_CH0_CTRL_TRIG_BUSY)
-	}
-	// Wait for PIO State Machine FIFO to be empty
-	println("Waiting for SM FIFO to be empty")
-	sm := st.pio.StateMachine(st.stateMachineIndex)
-	for !sm.IsTxFIFOEmpty() {
-		time.Sleep(10 * time.Nanosecond)
-	}
 }
 
 func RGBATo565(c color.RGBA) uint16 {

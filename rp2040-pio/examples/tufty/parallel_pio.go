@@ -8,37 +8,39 @@ import (
 	pio "github.com/tinygo-org/pio/rp2040-pio"
 )
 // helper function to setup GPIO output and configure the SM to output on needed pins
-func parallelST7789Init(sm pio.StateMachine, offset uint8, d0_pin machine.Pin, wr_pin machine.Pin) {
-    d0_pin.Configure(machine.PinConfig{Mode: machine.PinPIO0})
-    sm.SetConsecutivePinDirs(d0_pin, 8, true)
-    cfg := st7789_parallelProgramDefaultConfig(offset)
-    cfg.SetOutPins(d0_pin, 8)
-    cfg.SetSidesetPins(wr_pin)
-    cfg.SetFIFOJoin(pio.FIFO_JOIN_TX)
+func parallelST7789Init(sm pio.StateMachine, offset uint8, dStart machine.Pin, wr machine.Pin) {
+	Pio := sm.PIO()
+    dStart.Configure(machine.PinConfig{Mode: Pio.PinMode()})
+	sm.SetConsecutivePinDirs(dStart, 8, true)
+	wr.Configure(machine.PinConfig{Mode: Pio.PinMode()})
+	cfg := st7789_parallelProgramDefaultConfig(offset)
+	cfg.SetOutPins(dStart, 8)
+	cfg.SetSidesetPins(wr)
+	cfg.SetFIFOJoin(pio.FifoJoinTx)
 	cfg.SetOutShift(false, true, 8)
-    maxPIOClk := uint32(32 * machine.MHz)
-    sysClkHz := machine.CPUFrequency()
-    clkDiv := (sysClkHz + maxPIOClk -1) / maxPIOClk
-    cfg.SetClkDivIntFrac(uint16(clkDiv), 1)
+	maxPIOClk := uint32(32 * machine.MHz)
+	sysClkHz := machine.CPUFrequency()
+	clkDiv := (sysClkHz + maxPIOClk - 1) / maxPIOClk
+	cfg.SetClkDivIntFrac(uint16(clkDiv), 1)
 	sm.Init(offset, cfg)
-	sm.SetEnabled(true)
 }
 // st7789_parallel
 
 const st7789_parallelWrapTarget = 0
-const st7789_parallelWrap = 1
+const st7789_parallelWrap = 2
 
 var st7789_parallelInstructions = []uint16{
 		//     .wrap_target
-		0x6008, //  0: out    pins, 8         side 0     
-		0xb042, //  1: nop                    side 1     
+		0x80a0, //  0: pull   block           side 0     
+		0x6008, //  1: out    pins, 8         side 0     
+		0xb042, //  2: nop                    side 1     
 		//     .wrap
 }
 const st7789_parallelOrigin = -1
 func st7789_parallelProgramDefaultConfig(offset uint8) pio.StateMachineConfig {
 	cfg := pio.DefaultStateMachineConfig()
 	cfg.SetWrap(offset+st7789_parallelWrapTarget, offset+st7789_parallelWrap)
-	cfg.SetSideSet(1, false, false)
+	cfg.SetSidesetParams(1, false, false)
 	return cfg;
 }
 
