@@ -12,8 +12,11 @@ import (
 )
 
 type pioParallel struct {
-	sm pio.StateMachine
+	sm         pio.StateMachine
+	dmaChannel uint32
 }
+
+const noDMA uint32 = 0xffff_ffff
 
 func NewPIOParallel(sm pio.StateMachine, dStart, wr machine.Pin) (*pioParallel, error) {
 	Pio := sm.PIO()
@@ -25,10 +28,14 @@ func NewPIOParallel(sm pio.StateMachine, dStart, wr machine.Pin) (*pioParallel, 
 
 	sm.SetEnabled(true)
 
-	return &pioParallel{sm: sm}, nil
+	return &pioParallel{sm: sm, dmaChannel: noDMA}, nil
 }
 
 func (pl *pioParallel) Write(data []uint8) {
+	if pl.dmaChannel != noDMA {
+		pl.dmaWrite(data)
+		return
+	}
 	// Add separate control flow for when using DMA.
 	for _, char := range data {
 		pl.sm.TxPut(uint32(char))
@@ -56,6 +63,25 @@ func (pl *pioParallel) EnableDMA(dmaChan uint32) error {
 	setDREQ(dmaConfig, pioHW.GetIRQ())
 	dmaChannelConfigure(dmaChan, dmaConfig, pl.sm.TxReg(), nil, 0, false)
 	return nil
+}
+
+func (pl *pioParallel) dmaWrite(data []byte) {
+	dmaChan := &dmaChannels[pl.dmaChannel]
+	for dmaChan.CTRL_TRIG.Get()&rp.DMA_CH0_CTRL_TRIG_BUSY != 0 {
+		runtime.Gosched()
+	}
+
+	readAddr := uint32(uintptr(unsafe.Pointer(&data[0])))
+	dmaChan.TRANS_COUNT.Set(uint32(len(data)))
+	dmaChan.READ_ADDR.Set(uint32(readAddr))
+	dmaChan.CTRL_TRIG.Set(dmaChan.CTRL_TRIG.Get() | rp.DMA_CH0_CTRL_TRIG_EN)
+
+	for dmaChan.CTRL_TRIG.Get()&rp.DMA_CH0_CTRL_TRIG_BUSY != 0 {
+		runtime.Gosched()
+	}
+	for !pl.sm.IsTxFIFOEmpty() {
+		runtime.Gosched()
+	}
 }
 
 func dmaChannelConfigure(channel, config uint32, writeAddr, readAddr *volatile.Register32, transferCount uint32, trigger bool) {

@@ -42,7 +42,7 @@ func main() {
 	display.pl.Write([]byte("Hello World"))
 	// Setup DMA
 	println("Setting Up DMA")
-
+	// display.pl.EnableDMA(2)
 	rdPin.High()
 
 	println("Display Common Init")
