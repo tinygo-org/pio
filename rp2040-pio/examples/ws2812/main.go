@@ -11,16 +11,19 @@ import (
 func main() {
 	var ws pioWS2812
 
-	err := ws.init(pio.PIO0.StateMachine(0), machine.GP16)
+	err := ws.Init(pio.PIO0.StateMachine(0), machine.GP16)
 	if err != nil {
 		panic(err.Error())
 	}
-	for r := uint8(255); r > 0; r-- {
-		for g := uint8(255); g > 0; g-- {
-			for b := uint8(255); b > 0; b-- {
-				println("txfifo:", ws.sm.TxFIFOLevel(), "r:", r, "g:", g, "b:", b)
-				ws.SetRGB(r, g, b)
-				time.Sleep(500 * time.Millisecond)
+	const maxLevel = 8 * 8 * 2
+	for {
+		for r := uint8(maxLevel); r > 0; r -= 8 {
+			for g := uint8(maxLevel); g > 0; g -= 8 {
+				for b := uint8(maxLevel); b > 0; b -= 8 {
+					println("txfifo:", ws.sm.TxFIFOLevel(), "r:", r, "g:", g, "b:", b)
+					ws.SetRGB(r, g, b)
+					time.Sleep(time.Millisecond)
+				}
 			}
 		}
 	}
@@ -30,7 +33,7 @@ type pioWS2812 struct {
 	sm pio.StateMachine
 }
 
-func (ws *pioWS2812) init(sm pio.StateMachine, pin machine.Pin) (err error) {
+func (ws *pioWS2812) Init(sm pio.StateMachine, pin machine.Pin) (err error) {
 	// We add the program to PIO memory and store it's offset.
 	Pio := sm.PIO()
 	offset, err := Pio.AddProgram(ws2812_ledInstructions, ws2812_ledOrigin)
