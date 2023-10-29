@@ -11,7 +11,7 @@ import (
 func parallelST7789Init(sm pio.StateMachine, offset uint8, dStart machine.Pin, wr machine.Pin) {
 	Pio := sm.PIO()
     dStart.Configure(machine.PinConfig{Mode: Pio.PinMode()})
-	sm.SetConsecutivePinDirs(dStart, 8, true)
+	sm.SetPindirsConsecutive(dStart, 8, true)
 	wr.Configure(machine.PinConfig{Mode: Pio.PinMode()})
 	cfg := st7789_parallelProgramDefaultConfig(offset)
 	cfg.SetOutPins(dStart, 8)

@@ -41,7 +41,7 @@ func (ws *pioWS2812) Init(sm pio.StateMachine, pin machine.Pin) (err error) {
 		return err
 	}
 	pin.Configure(machine.PinConfig{Mode: Pio.PinMode()})
-	sm.SetConsecutivePinDirs(pin, 1, true)
+	sm.SetPindirsConsecutive(pin, 1, true)
 	cfg := ws2812_ledProgramDefaultConfig(offset)
 	cfg.SetOutPins(pin, 1)
 	// We only use Tx FIFO, so we set the join to Tx.

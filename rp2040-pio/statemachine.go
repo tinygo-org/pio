@@ -102,29 +102,6 @@ func (sm StateMachine) SetClkDiv(whole uint16, frac uint8) {
 	sm.HW().CLKDIV.Set(clkDiv(whole, frac))
 }
 
-// SetConsecurityPinDirs sets a range of pins to either 'in' or 'out'.
-func (sm StateMachine) SetConsecutivePinDirs(pin machine.Pin, count uint8, isOut bool) {
-	hw := sm.HW()
-	pinctl := &hw.PINCTRL
-
-	pinctrl_saved := pinctl.Get()
-	pindir_val := uint16(0)
-	if isOut {
-		pindir_val = 0x1f
-	}
-
-	for count > 5 {
-		pinctl.Set((5 << rp.PIO0_SM0_PINCTRL_SET_COUNT_Pos) | (uint32(pin) << rp.PIO0_SM0_PINCTRL_SET_BASE_Pos))
-		sm.Exec(EncodeSet(SrcDestPinDirs, pindir_val))
-		count -= 5
-		pin = (pin + 5) & 0x1f
-	}
-
-	pinctl.Set((uint32(count) << rp.PIO0_SM0_PINCTRL_SET_COUNT_Pos) | (uint32(pin) << rp.PIO0_SM0_PINCTRL_SET_BASE_Pos))
-	sm.Exec(EncodeSet(SrcDestPinDirs, pindir_val))
-	pinctl.Set(pinctrl_saved)
-}
-
 // TxPut puts a value into the state machine's TX FIFO.
 //
 // This function does not check for fullness. If the FIFO is full the FIFO
@@ -205,6 +182,19 @@ func (sm StateMachine) ClearFIFOs() {
 // Exec will immediately execute an instruction on the state machine
 func (sm StateMachine) Exec(instr uint16) {
 	sm.HW().INSTR.Set(uint32(instr))
+}
+
+// SetPindirsConsecutive sets a range of pins to either 'in' or 'out'.
+func (sm StateMachine) SetPindirsConsecutive(pin machine.Pin, count uint8, isOut bool) {
+	var dirMask, pinMask uint32
+	bit := boolToBit(isOut)
+	start := uint8(pin)
+	end := start + count
+	for shift := start; shift < end; shift++ {
+		dirMask |= bit << shift
+		pinMask |= 1 << shift
+	}
+	sm.SetPindirsMasked(dirMask, pinMask)
 }
 
 // SetPinsMasked sets a value on multiple pins for the PIO instance.

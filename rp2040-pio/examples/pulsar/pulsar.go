@@ -45,7 +45,7 @@ func NewPulsar(sm pio.StateMachine, pin machine.Pin) (*Pulsar, error) {
 		return nil, err
 	}
 	pin.Configure(machine.PinConfig{Mode: sm.PIO().PinMode()})
-	sm.SetConsecutivePinDirs(pin, 1, true)
+	sm.SetPindirsConsecutive(pin, 1, true)
 	cfg := pulsarProgramDefaultConfig(offset)
 	cfg.SetSetPins(pin, 1)
 	sm.Init(offset, cfg)
