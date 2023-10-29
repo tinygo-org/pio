@@ -25,7 +25,7 @@ func main() {
 				panic(err.Error())
 			}
 			for i := uint32(10); i < 100; i *= 2 {
-				pulsar.Pulse(i)
+				pulsar.Start(i)
 				time.Sleep(time.Second / 2)
 			}
 		}
@@ -53,7 +53,7 @@ func NewPulsar(sm pio.StateMachine, pin machine.Pin) (*Pulsar, error) {
 	return &Pulsar{sm: sm, offset: offset}, nil
 }
 
-func (p *Pulsar) Pulse(count uint32) {
+func (p *Pulsar) Start(count uint32) {
 	if count == 0 {
 		return
 	}
