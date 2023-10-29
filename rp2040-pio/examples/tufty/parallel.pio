@@ -19,19 +19,23 @@ import (
 )
 
 // helper function to setup GPIO output and configure the SM to output on needed pins
-func parallelST7789Init(sm pio.StateMachine, offset uint8, d0_pin machine.Pin, wr_pin machine.Pin) {
-    d0_pin.Configure(machine.PinConfig{Mode: machine.PinPIO0})
-    sm.SetConsecutivePinDirs(d0_pin, 8, true)
-    cfg := st7789_parallelProgramDefaultConfig(offset)
-    cfg.SetOutPins(d0_pin, 8)
-    cfg.SetSidesetPins(wr_pin)
-    cfg.SetFIFOJoin(pio.FIFO_JOIN_TX)
+func parallelST7789Init(sm pio.StateMachine, offset uint8, dStart machine.Pin, wr machine.Pin) {
+	Pio := sm.PIO()
+    dStart.Configure(machine.PinConfig{Mode: Pio.PinMode()})
+	sm.SetConsecutivePinDirs(dStart, 8, true)
+	wr.Configure(machine.PinConfig{Mode: Pio.PinMode()})
+
+	cfg := st7789_parallelProgramDefaultConfig(offset)
+	cfg.SetOutPins(dStart, 8)
+	cfg.SetSidesetPins(wr)
+	cfg.SetFIFOJoin(pio.FifoJoinTx)
 	cfg.SetOutShift(false, true, 8)
-    maxPIOClk := uint32(32 * machine.MHz)
-    sysClkHz := machine.CPUFrequency()
-    clkDiv := (sysClkHz + maxPIOClk -1) / maxPIOClk
-    cfg.SetClkDivIntFrac(uint16(clkDiv), 1)
+
+	maxPIOClk := uint32(32 * machine.MHz)
+	sysClkHz := machine.CPUFrequency()
+	clkDiv := (sysClkHz + maxPIOClk - 1) / maxPIOClk
+	cfg.SetClkDivIntFrac(uint16(clkDiv), 1)
+
 	sm.Init(offset, cfg)
-	sm.SetEnabled(true)
 }
 %}

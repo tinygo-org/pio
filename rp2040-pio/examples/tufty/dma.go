@@ -249,22 +249,3 @@ func setSniffEnable(cc uint32, sniffEnable bool) {
 	}
 	cc = cc & ^uint32(rp.DMA_CH0_CTRL_TRIG_SNIFF_EN_Pos)
 }
-
-/*
-static inline void dma_channel_configure(uint channel, const dma_channel_config *config, volatile void *write_addr,
-
-	                                         const volatile void *read_addr,
-	                                         uint transfer_count, bool trigger) {
-	    dma_channel_set_read_addr(channel, read_addr, false);
-	    dma_channel_set_write_addr(channel, write_addr, false);
-	    dma_channel_set_trans_count(channel, transfer_count, false);
-	    dma_channel_set_config(channel, config, trigger);
-	}
-*/
-func dmaChannelConfigure(channel uint32, config uint32, writeAddr uint32, readAddr uint32, transferCount uint32, trigger bool) {
-	dmaChan := dmaChannels[channel]
-	dmaChan.READ_ADDR.Set(readAddr)
-	dmaChan.WRITE_ADDR.Set(writeAddr)
-	dmaChan.TRANS_COUNT.Set(transferCount)
-	dmaChan.CTRL_TRIG.Set(config | rp.DMA_CH0_CTRL_TRIG_EN)
-}

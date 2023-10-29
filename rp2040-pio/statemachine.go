@@ -25,6 +25,11 @@ func (sm StateMachine) PIO() *PIO { return sm.pio }
 // StateMachineIndex returns the index of the state machine within the PIO.
 func (sm StateMachine) StateMachineIndex() uint8 { return sm.index }
 
+// IsValid returns true if state machine is a valid instance.
+func (sm StateMachine) IsValid() bool {
+	return (sm.pio.hw == rp.PIO0 || sm.pio.hw == rp.PIO1) && sm.index <= 3
+}
+
 // Init initializes the state machine
 //
 // initialPC is the initial program counter
@@ -88,6 +93,13 @@ func (sm StateMachine) SetConfig(cfg StateMachineConfig) {
 	hw.PINCTRL.Set(cfg.PinCtrl)
 }
 
+// SetClkDiv sets the clock divider for the state machine from a whole and fractional part where:
+//
+//	Frequency = clock freq / (CLKDIV_INT + CLKDIV_FRAC / 256)
+func (sm StateMachine) SetClkDiv(whole uint16, frac uint8) {
+	sm.HW().CLKDIV.Set(clkDiv(whole, frac))
+}
+
 // SetConsecurityPinDirs sets a range of pins to either 'in' or 'out'.
 func (sm StateMachine) SetConsecutivePinDirs(pin machine.Pin, count uint8, isOut bool) {
 	hw := sm.HW()
@@ -116,7 +128,7 @@ func (sm StateMachine) SetConsecutivePinDirs(pin machine.Pin, count uint8, isOut
 // This function does not check for fullness. If the FIFO is full the FIFO
 // contents are not affected and the sticky TXOVER flag is set for this FIFO in FDEBUG.
 func (sm StateMachine) TxPut(data uint32) {
-	reg := sm.tx()
+	reg := sm.TxReg()
 	reg.Set(data)
 }
 
@@ -125,19 +137,19 @@ func (sm StateMachine) TxPut(data uint32) {
 // This function does not check for emptiness. If the FIFO is empty
 // the result is undefined and the sticky RXUNDER flag for this FIFO is set in FDEBUG.
 func (sm StateMachine) RxGet() uint32 {
-	reg := sm.rx()
+	reg := sm.RxReg()
 	return reg.Get()
 }
 
-// tx gets a pointer to the TX FIFO register for this state machine.
-func (sm StateMachine) tx() *volatile.Register32 {
+// TxReg gets a pointer to the TX FIFO register for this state machine.
+func (sm StateMachine) TxReg() *volatile.Register32 {
 	start := unsafe.Pointer(&sm.pio.hw.TXF0) // 0x10
 	offset := uintptr(sm.index) * 4
 	return (*volatile.Register32)(unsafe.Pointer(uintptr(start) + offset))
 }
 
-// rx gets a pointer to the RX FIFO register for this state machine.
-func (sm StateMachine) rx() *volatile.Register32 {
+// RxReg gets a pointer to the RX FIFO register for this state machine.
+func (sm StateMachine) RxReg() *volatile.Register32 {
 	start := unsafe.Pointer(&sm.pio.hw.RXF0) // 0x20
 	offset := uintptr(sm.index) * 4
 	return (*volatile.Register32)(unsafe.Pointer(uintptr(start) + offset))

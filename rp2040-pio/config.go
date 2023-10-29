@@ -44,9 +44,13 @@ type StateMachineConfig struct {
 // machine from a whole and fractional part.
 //
 //	Frequency = clock freq / (CLKDIV_INT + CLKDIV_FRAC / 256)
-func (cfg *StateMachineConfig) SetClkDivIntFrac(div uint16, frac uint8) {
-	cfg.ClkDiv = (uint32(frac) << rp.PIO0_SM0_CLKDIV_FRAC_Pos) |
-		(uint32(div) << rp.PIO0_SM0_CLKDIV_INT_Pos)
+func (cfg *StateMachineConfig) SetClkDivIntFrac(whole uint16, frac uint8) {
+	cfg.ClkDiv = clkDiv(whole, frac)
+}
+
+func clkDiv(whole uint16, frac uint8) uint32 {
+	return (uint32(frac) << rp.PIO0_SM0_CLKDIV_FRAC_Pos) |
+		(uint32(whole) << rp.PIO0_SM0_CLKDIV_INT_Pos)
 }
 
 // SetWrap sets the wrapping configuration for the state machine

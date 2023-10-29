@@ -1,0 +1,24 @@
+; Author: Patricio Whittingslow
+
+
+.program pulsar
+.wrap_target
+    set pindirs, 1 ; Set pin to output.
+    pull block     ; Block until 32bit word loaded from Tx FIFO to OSR (output shift register). 
+    mov x, osr          ; Copy the word from OSR into scratch register x.
+
+decloop:
+    set pins, 1 [1] ; Square wave high and delay 1 cycle.
+    set pins, 0     ; Square wave low.
+    jmp x-- decloop ; Decrement X, our counter.
+.wrap
+    
+
+
+% go {
+package main
+
+import (
+    pio "github.com/tinygo-org/pio/rp2040-pio"
+)
+%}
