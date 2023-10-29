@@ -3,6 +3,7 @@ package pio
 import (
 	"device/rp"
 	"machine"
+	"math/bits"
 	"runtime/volatile"
 	"unsafe"
 )
@@ -204,6 +205,39 @@ func (sm StateMachine) ClearFIFOs() {
 // Exec will immediately execute an instruction on the state machine
 func (sm StateMachine) Exec(instr uint16) {
 	sm.HW().INSTR.Set(uint32(instr))
+}
+
+// SetPinsMasked sets a value on multiple pins for the PIO instance.
+// This method repeatedly reconfigures the state machines pins.
+// Use this method as convenience to set initial pin states BEFORE running state machine.
+func (sm StateMachine) SetPinsMasked(valueMask, pinMask uint32) {
+	sm.setPinExec(SrcDestPins, valueMask, pinMask)
+}
+
+func (sm StateMachine) SetPindirsMasked(dirMask, pinMask uint32) {
+	sm.setPinExec(SrcDestPinDirs, dirMask, pinMask)
+}
+
+func (sm StateMachine) setPinExec(instr SrcDest, valueMask, pinMask uint32) {
+	hw := sm.HW()
+	pinctrlSaved := hw.PINCTRL.Get()
+	exectrlSaved := hw.EXECCTRL.Get()
+	hw.EXECCTRL.ClearBits(1 << rp.PIO0_SM0_EXECCTRL_OUT_STICKY_Pos)
+	// https://github.com/raspberrypi/pico-sdk/blob/6a7db34ff63345a7badec79ebea3aaef1712f374/src/rp2_common/hardware_pio/pio.c#L178
+	for pinMask != 0 {
+		base := uint32(bits.TrailingZeros32(pinMask))
+
+		hw.PINCTRL.Set(
+			1<<rp.PIO0_SM0_PINCTRL_SET_COUNT_Pos |
+				base<<rp.PIO0_SM0_PINCTRL_SET_BASE_Pos,
+		)
+
+		value := 0x1 & uint16(valueMask>>base)
+		sm.Exec(EncodeSet(instr, value))
+		pinMask &= pinMask - 1
+	}
+	hw.PINCTRL.Set(pinctrlSaved)
+	hw.EXECCTRL.Set(exectrlSaved)
 }
 
 const (

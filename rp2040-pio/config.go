@@ -106,25 +106,48 @@ func (cfg *StateMachineConfig) SetSidesetParams(bitCount uint8, optional bool, p
 // SetSidesetPins sets the lowest-numbered pin that will be affected by a side-set
 // operation.
 func (cfg *StateMachineConfig) SetSidesetPins(firstPin machine.Pin) {
+	checkPinBaseAndCount(firstPin, 1)
 	cfg.PinCtrl = (cfg.PinCtrl & ^uint32(rp.PIO0_SM0_PINCTRL_SIDESET_BASE_Msk)) |
 		(uint32(firstPin) << rp.PIO0_SM0_PINCTRL_SIDESET_BASE_Pos)
 }
 
-// SetOutPins sets the pins a PIO 'set' instruction modifies.
+// SetOutPins sets the pins a PIO 'out' instruction modifies. Can overlap with pins in `in`, `set` and `sideset`.
 //   - Base defines the lowest-numbered pin that will be affected by an OUT PINS,
 //     OUT PINDIRS or MOV PINS instruction. The data written to this pin will always be
 //     the least-significant bit of the OUT or MOV data.
 //   - Count defines the number of pins that will be affected by an OUT PINS, 0..32 inclusive.
 func (cfg *StateMachineConfig) SetOutPins(base machine.Pin, count uint8) {
-	if count > 32 {
-		panic("SetSetPins: count")
-	}
+	checkPinBaseAndCount(base, count)
+	cfg.PinCtrl = (cfg.PinCtrl & ^uint32(rp.PIO0_SM0_PINCTRL_OUT_BASE_Msk|rp.PIO0_SM0_PINCTRL_OUT_COUNT_Msk)) |
+		(uint32(base) << rp.PIO0_SM0_PINCTRL_OUT_BASE_Pos) |
+		(uint32(count) << rp.PIO0_SM0_PINCTRL_OUT_COUNT_Pos)
+}
+
+// SetSetPins sets the pins a PIO 'set' instruction modifies.
+// Can overlap with pins in `in`, `out` and `sideset`.
+func (cfg *StateMachineConfig) SetSetPins(base machine.Pin, count uint8) {
+	checkPinBaseAndCount(base, count)
 	cfg.PinCtrl = (cfg.PinCtrl & ^uint32(rp.PIO0_SM0_PINCTRL_SET_BASE_Msk|rp.PIO0_SM0_PINCTRL_SET_COUNT_Msk)) |
 		(uint32(base) << rp.PIO0_SM0_PINCTRL_SET_BASE_Pos) |
 		(uint32(count) << rp.PIO0_SM0_PINCTRL_SET_COUNT_Pos)
 }
 
-type FifoJoin int
+// SetInPins in a state machine configuration. Can overlap with out, set and side-set pins.
+func (cfg *StateMachineConfig) SetInPins(base machine.Pin) {
+	checkPinBaseAndCount(base, 1)
+	// c->pinctrl = (c->pinctrl & ~PIO_SM0_PINCTRL_IN_BASE_BITS) | (in_base << PIO_SM0_PINCTRL_IN_BASE_LSB);
+	cfg.PinCtrl = (cfg.PinCtrl & ^uint32(rp.PIO0_SM0_PINCTRL_IN_BASE_Msk)) | (uint32(base) << rp.PIO0_SM0_PINCTRL_IN_BASE_Pos)
+}
+
+func checkPinBaseAndCount(base machine.Pin, count uint8) {
+	if base >= 32 {
+		panic("pio:bad pin")
+	} else if count > 32 {
+		panic("pio:count too large")
+	}
+}
+
+type FifoJoin uint8
 
 const (
 	// FifoJoinNone is the default FIFO joining configuration. The RX and TX FIFOs are separate and of length 4 each.
