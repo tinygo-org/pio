@@ -186,15 +186,24 @@ func (sm StateMachine) Exec(instr uint16) {
 
 // SetPindirsConsecutive sets a range of pins to either 'in' or 'out'.
 func (sm StateMachine) SetPindirsConsecutive(pin machine.Pin, count uint8, isOut bool) {
-	var dirMask, pinMask uint32
-	bit := boolToBit(isOut)
-	start := uint8(pin)
+	checkPinBaseAndCount(pin, count)
+	sm.SetPindirsMasked(makePinmask(uint8(pin), count, uint8(boolToBit(isOut))))
+}
+
+// SetPinsConsecutive sets a range of pins initial starting values.
+func (sm StateMachine) SetPinsConsecutive(pin machine.Pin, count uint8, level bool) {
+	checkPinBaseAndCount(pin, count)
+	sm.SetPinsMasked(makePinmask(uint8(pin), count, uint8(boolToBit(level))))
+}
+
+func makePinmask(base, count, bit uint8) (valMask, pinMask uint32) {
+	start := uint8(base)
 	end := start + count
 	for shift := start; shift < end; shift++ {
-		dirMask |= bit << shift
+		valMask |= uint32(bit) << shift
 		pinMask |= 1 << shift
 	}
-	sm.SetPindirsMasked(dirMask, pinMask)
+	return valMask, pinMask
 }
 
 // SetPinsMasked sets a value on multiple pins for the PIO instance.
