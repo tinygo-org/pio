@@ -18,10 +18,10 @@ type StateMachine struct {
 }
 
 // IsClaimed returns true if the state machine is claimed by other code and should not be used.
-func (sm StateMachine) IsClaimed() bool { return sm.pio.usedSMMask&(1<<sm.index) != 0 }
+func (sm StateMachine) IsClaimed() bool { return sm.pio.claimedSMMask&(1<<sm.index) != 0 }
 
 // Unclaim releases the state machine for use by other code.
-func (sm StateMachine) Unclaim() { sm.pio.usedSMMask &^= (1 << sm.index) }
+func (sm StateMachine) Unclaim() { sm.pio.claimedSMMask &^= (1 << sm.index) }
 
 // Claim attempts to claim the state machine for use by the caller and returns
 // true if successful, or false if StateMachine already claimed.
@@ -29,7 +29,7 @@ func (sm StateMachine) Claim() bool {
 	if sm.IsClaimed() {
 		return false
 	}
-	sm.pio.usedSMMask |= 1 << sm.index
+	sm.pio.claimedSMMask |= 1 << sm.index
 	return true
 }
 

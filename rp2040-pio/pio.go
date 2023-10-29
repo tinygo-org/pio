@@ -37,7 +37,8 @@ type PIO struct {
 	// Bitmask of used instruction space. Each PIO has 32 slots for instructions.
 	usedSpaceMask uint32
 	// Bitmask of used state machines. Each PIO has 4 state machines.
-	usedSMMask uint8
+	claimedSMMask uint8
+	nc            noCopy
 }
 
 // BlockIndex returns 0 or 1 depending on whether the underlying device is PIO0 or PIO1.
@@ -242,3 +243,14 @@ type irqINTHW struct {
 const (
 	sizeOK = unsafe.Sizeof(rp.PIO0_Type{}) == unsafe.Sizeof(pioHW{})
 )
+
+// noCopy may be embedded into structs which must not be copied
+// after the first use.
+//
+// See https://golang.org/issues/8005#issuecomment-190753527
+// for details.
+type noCopy struct{}
+
+// Lock is a no-op used by -copylocks checker from `go vet`.
+func (*noCopy) Lock()   {}
+func (*noCopy) UnLock() {}
