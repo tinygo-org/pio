@@ -33,11 +33,13 @@ func main() {
 }
 
 type Pulsar struct {
-	sm pio.StateMachine
+	sm     pio.StateMachine
+	offset uint8
 }
 
 func NewPulsar(sm pio.StateMachine, pin machine.Pin) (*Pulsar, error) {
 	Pio := sm.PIO()
+
 	offset, err := Pio.AddProgram(pulsarInstructions, pulsarOrigin)
 	if err != nil {
 		return nil, err
@@ -48,7 +50,7 @@ func NewPulsar(sm pio.StateMachine, pin machine.Pin) (*Pulsar, error) {
 	cfg.SetOutPins(pin, 1)
 	sm.Init(offset, cfg)
 	sm.SetEnabled(true)
-	return &Pulsar{sm: sm}, nil
+	return &Pulsar{sm: sm, offset: offset}, nil
 }
 
 func (p *Pulsar) Pulse(count uint32) {
@@ -66,4 +68,18 @@ func (p *Pulsar) SetPeriod(period time.Duration) error {
 	}
 	p.sm.SetClkDiv(whole, frac)
 	return nil
+}
+
+func (p *Pulsar) Pause(enabled bool) {
+	p.sm.SetEnabled(enabled)
+}
+
+func (p *Pulsar) Stop() {
+	// See StateMachine.Init for reference on this sequence of operations.
+	p.sm.SetEnabled(false)
+	p.sm.ClearFIFOs()
+	p.sm.Restart()
+	p.sm.ClkDivRestart()
+	p.sm.Exec(pio.EncodeJmp(uint16(p.offset)))
+	p.sm.SetEnabled(true)
 }

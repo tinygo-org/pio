@@ -54,10 +54,11 @@ func (sm StateMachine) Init(initialPC uint8, cfg StateMachineConfig) {
 	sm.ClearFIFOs()
 
 	// Clear FIFO debug flags
-	fdebugMask := uint32((1 << rp.PIO0_FDEBUG_TXOVER_Pos) |
+	const fdebugMask = uint32((1 << rp.PIO0_FDEBUG_TXOVER_Pos) |
 		(1 << rp.PIO0_FDEBUG_RXUNDER_Pos) |
 		(1 << rp.PIO0_FDEBUG_TXSTALL_Pos) |
 		(1 << rp.PIO0_FDEBUG_RXSTALL_Pos))
+
 	sm.pio.hw.FDEBUG.Set(fdebugMask << sm.index)
 
 	sm.Restart()
