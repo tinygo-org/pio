@@ -6,6 +6,7 @@ import (
 	"time"
 
 	pio "github.com/tinygo-org/pio/rp2040-pio"
+	"github.com/tinygo-org/pio/rp2040-pio/piolib"
 )
 
 const clockHz = 133000000
@@ -23,7 +24,13 @@ const (
 func main() {
 	time.Sleep(5 * time.Second)
 	println("Initializing Display")
+	const MHz = 1_000_000
+	p8tx, err := piolib.NewPIOParallel(pio.PIO0.StateMachine(0), wrPin, db0Pin, 1*MHz)
+	if err != nil {
+		panic(err.Error())
+	}
 	display := ST7789{
+		pl:       p8tx,
 		cs:       csPin,
 		dc:       dcPin,
 		rd:       rdPin,
@@ -33,8 +40,6 @@ func main() {
 		rotation: Rotation0,
 	}
 
-	println("Initializing PIO")
-	println("Parallel Init")
 	err := display.ParallelInit(pio.PIO0.StateMachine(0), db0Pin, wrPin)
 	if err != nil {
 		panic(err.Error())

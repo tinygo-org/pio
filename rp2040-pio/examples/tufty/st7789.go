@@ -1,4 +1,3 @@
-//go:generate pioasm -o go parallel.pio parallel_pio.go
 package main
 
 import (
@@ -7,7 +6,7 @@ import (
 	"machine"
 	"time"
 
-	pio "github.com/tinygo-org/pio/rp2040-pio"
+	"github.com/tinygo-org/pio/rp2040-pio/piolib"
 )
 
 // ST7789 wraps a Parallel ST7789 Display
@@ -18,7 +17,7 @@ type ST7789 struct {
 	rd machine.Pin
 	bl machine.Pin
 
-	pl *pioParallel
+	pl *piolib.Parallel8Tx
 
 	// General Display Stuff
 	width    uint16
@@ -27,13 +26,6 @@ type ST7789 struct {
 
 	//Copied stuff from the TinyGo Drivers implementation
 	buf [6]byte
-}
-
-// ParallelInit initializes everything necessary to communicate with the display
-// using an 8-bit parallel connection
-func (st *ST7789) ParallelInit(sm pio.StateMachine, d0, wr machine.Pin) (err error) {
-	st.pl, err = NewPIOParallel(sm, d0, wr)
-	return err
 }
 
 func (st *ST7789) SetBacklight(on bool) {

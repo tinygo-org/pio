@@ -91,17 +91,23 @@ func (spi *SPI) Tx(w, r []byte) error {
 	}
 	retries := int8(32)
 	for rxRemain != 0 || txRemain != 0 {
+		stall := true
 		if txRemain != 0 && !spi.sm.IsTxFIFOFull() {
 			spi.sm.TxPut(uint32(w[len(w)-txRemain]))
 			txRemain--
+			stall = false
 		}
 		if txRemain != 0 && !spi.sm.IsRxFIFOEmpty() {
 			r[len(r)-rxRemain] = uint8(spi.sm.RxGet())
 			rxRemain--
+			stall = false
 		}
 		retries--
 		if retries <= 0 {
 			return errors.New("pioSPI timeout")
+		} else if stall {
+			// We stalled on this iteration, yield process.
+			gosched()
 		}
 	}
 	return nil

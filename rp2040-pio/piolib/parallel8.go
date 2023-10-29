@@ -1,63 +1,79 @@
-package main
+//go:build rp2040
+
+package piolib
 
 import (
-	"device/rp"
-	"errors"
 	"machine"
-	"runtime"
-	"runtime/volatile"
-	"unsafe"
 
 	pio "github.com/tinygo-org/pio/rp2040-pio"
 )
 
-type pioParallel struct {
+// Parallel8Tx is a 8-wire, only send Parallel implementation.
+type Parallel8Tx struct {
 	sm         pio.StateMachine
+	offset     uint8
 	dmaChannel uint32
 }
 
-const NoDMA uint32 = 0xffff_ffff
+// unused for now.
+const noDMA uint32 = 0xffff_ffff
 
-func NewPIOParallel(sm pio.StateMachine, dStart, wr machine.Pin) (*pioParallel, error) {
+func NewPIOParallel(sm pio.StateMachine, wr, dStart machine.Pin, baud uint32) (*Parallel8Tx, error) {
 	Pio := sm.PIO()
-	offset, err := Pio.AddProgram(st7789_parallelInstructions, st7789_parallelOrigin)
+	offset, err := Pio.AddProgram(parallel8Instructions, parallel8Origin)
 	if err != nil {
 		return nil, err
 	}
-	parallelST7789Init(sm, offset, dStart, wr)
 
+	dStart.Configure(machine.PinConfig{Mode: Pio.PinMode()})
+	sm.SetPindirsConsecutive(dStart, 8, true)
+	wr.Configure(machine.PinConfig{Mode: Pio.PinMode()})
+	cfg := parallel8ProgramDefaultConfig(offset)
+
+	cfg.SetOutPins(dStart, 8)
+	cfg.SetSidesetPins(wr)
+	cfg.SetFIFOJoin(pio.FifoJoinTx)
+	cfg.SetOutShift(false, true, 8)
+
+	baud *= 4 // Parallel is 4 instructions, so we need to multiply baud by 4 to get PIO frequency.
+	whole, frac, err := pio.ClkDivFromPeriod(1e9/baud, machine.CPUFrequency())
+	if err != nil {
+		return nil, err
+	}
+	cfg.SetClkDivIntFrac(whole, frac)
+
+	sm.Init(offset, cfg)
 	sm.SetEnabled(true)
 
-	return &pioParallel{sm: sm, dmaChannel: NoDMA}, nil
+	return &Parallel8Tx{sm: sm, dmaChannel: noDMA, offset: offset}, nil
 }
 
-func (pl *pioParallel) Write(data []uint8) {
-	if pl.dmaChannel != NoDMA {
-		pl.dmaWrite(data)
-		return
+func (pl *Parallel8Tx) Write(data []uint8) error {
+	if pl.dmaChannel != noDMA {
+		// pl.dmaWrite(data)
+		return nil
 	}
-	// Add separate control flow for when using DMA.
+	retries := int8(32)
 	for _, char := range data {
-		pl.sm.TxPut(uint32(char))
-
-		retries := int8(32)
-		for pl.sm.IsTxFIFOFull() && retries > 0 {
-			println("Waiting for FIFO to empty")
-			runtime.Gosched()
+		if !pl.sm.IsTxFIFOFull() {
+			pl.sm.TxPut(uint32(char))
+		} else if retries > 0 {
+			gosched()
 			retries--
-		}
-		if retries <= 0 {
-			println("FIFO never emptied")
+		} else {
+			return errTimeout
 		}
 	}
+	return nil
 }
 
-func (pl *pioParallel) EnableDMA(dmaChan uint32) error {
+/*
+func (pl *Parallel8Tx) EnableDMA(dmaChan uint32) error {
 	if !pl.sm.IsValid() {
 		return errors.New("PIO Statemachine needs initializing") //Not initialized
 	}
 	pl.dmaChannel = dmaChan // DMA enabled
-	if dmaChan == NoDMA {
+	if dmaChan == noDMA {
 		return nil
 	}
 	Pio := pl.sm.PIO()
@@ -69,7 +85,7 @@ func (pl *pioParallel) EnableDMA(dmaChan uint32) error {
 	return nil
 }
 
-func (pl *pioParallel) dmaWrite(data []byte) {
+func (pl *Parallel8Tx) dmaWrite(data []byte) {
 	dmaChan := &dmaChannels[pl.dmaChannel]
 	for dmaChan.CTRL_TRIG.Get()&rp.DMA_CH0_CTRL_TRIG_BUSY != 0 {
 		runtime.Gosched()
@@ -101,3 +117,4 @@ func dmaChannelConfigure(channel, config uint32, writeAddr, readAddr *volatile.R
 	dmaChan.TRANS_COUNT.Set(transferCount)
 	dmaChan.CTRL_TRIG.Set(config | rp.DMA_CH0_CTRL_TRIG_EN)
 }
+*/

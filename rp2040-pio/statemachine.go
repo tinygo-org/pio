@@ -217,7 +217,7 @@ func (sm StateMachine) SetPindirsMasked(dirMask, pinMask uint32) {
 	sm.setPinExec(SrcDestPinDirs, dirMask, pinMask)
 }
 
-func (sm StateMachine) setPinExec(instr SrcDest, valueMask, pinMask uint32) {
+func (sm StateMachine) setPinExec(dest SrcDest, valueMask, pinMask uint32) {
 	hw := sm.HW()
 	pinctrlSaved := hw.PINCTRL.Get()
 	exectrlSaved := hw.EXECCTRL.Get()
@@ -232,7 +232,7 @@ func (sm StateMachine) setPinExec(instr SrcDest, valueMask, pinMask uint32) {
 		)
 
 		value := 0x1 & uint16(valueMask>>base)
-		sm.Exec(EncodeSet(instr, value))
+		sm.Exec(EncodeSet(dest, value))
 		pinMask &= pinMask - 1
 	}
 	hw.PINCTRL.Set(pinctrlSaved)

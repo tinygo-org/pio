@@ -1,0 +1,18 @@
+.program parallel8
+.side_set 1
+
+.wrap_target
+    pull block   side 0      ; Get data from Tx FIFO and store into OSR.
+    out pins, 8  side 0      ; Write OSR databits into pins.
+    nop          side 1  [1] ; 
+.wrap
+
+% go {
+//go:build rp2040
+
+package piolib
+
+import (
+	pio "github.com/tinygo-org/pio/rp2040-pio"
+)
+%}

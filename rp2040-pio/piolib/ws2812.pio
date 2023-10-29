@@ -16,10 +16,9 @@ skip:
 	jmp entry_point
 
 % go {
-package main
+package piolib
 
 import (
-    _ "machine"
     pio "github.com/tinygo-org/pio/rp2040-pio"
 )
 %}
