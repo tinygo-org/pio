@@ -93,6 +93,13 @@ func (sm StateMachine) SetConfig(cfg StateMachineConfig) {
 	hw.PINCTRL.Set(cfg.PinCtrl)
 }
 
+// SetClkDiv sets the clock divider for the state machine from a whole and fractional part where:
+//
+//	Frequency = clock freq / (CLKDIV_INT + CLKDIV_FRAC / 256)
+func (sm StateMachine) SetClkDiv(whole uint16, frac uint8) {
+	sm.HW().CLKDIV.Set(clkDiv(whole, frac))
+}
+
 // SetConsecurityPinDirs sets a range of pins to either 'in' or 'out'.
 func (sm StateMachine) SetConsecutivePinDirs(pin machine.Pin, count uint8, isOut bool) {
 	hw := sm.HW()

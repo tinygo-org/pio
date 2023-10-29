@@ -1,6 +1,9 @@
 package pio
 
-import "math"
+import (
+	"errors"
+	"math"
+)
 
 // This file contains the primitives for creating instructions dynamically
 const (
@@ -159,17 +162,19 @@ func EncodeNOP() uint16 {
 	return EncodeMov(SrcDestY, SrcDestY)
 }
 
-// period a fixed point value in nanoseconds. freq in Hz.
-func clkdivPeriod(period, freq uint32) (whole uint16, frac uint8) {
+// ClkDivFromPeriod calculates the CLKDIV register values
+// to reach a given StateMachine cycle period given the RP2040 CPU frequency.
+// period is expected to be in nanoseconds. freq is expected to be in Hz.
+func ClkDivFromPeriod(period, freq uint32) (whole uint16, frac uint8, err error) {
 	//  freq = 256*clockfreq / (256*whole + frac)
 	// where period = 1e9/freq => freq = 1e9/period, so:
 	//  1e9/period = 256*clockfreq / (256*whole + frac) =>
 	//  256*whole + frac = 256*clockfreq*period/1e9
 	clkdiv := 256 * int64(period) * int64(freq) / int64(1e9)
 	if clkdiv > 256*math.MaxUint16 {
-		panic("clkdivPeriod: period or CPU frequency too large")
+		return 0, 0, errors.New("ClkDivFromPeriod: period or CPU frequency too small")
 	}
 	whole = uint16(clkdiv / 256)
 	frac = uint8(clkdiv % 256)
-	return whole, frac
+	return whole, frac, nil
 }
