@@ -22,8 +22,9 @@ var (
 
 // PIO errors.
 var (
-	ErrOutOfProgramSpace = errors.New("pio: out of program space")
-	ErrNoSpaceAtOffset   = errors.New("pio: program space unavailable at offset")
+	ErrOutOfProgramSpace   = errors.New("pio: out of program space")
+	ErrNoSpaceAtOffset     = errors.New("pio: program space unavailable at offset")
+	errStateMachineClaimed = errors.New("pio: state machine already claimed")
 )
 
 const badStateMachineIndex = "invalid state machine index"
@@ -31,10 +32,12 @@ const badPIO = "invalid PIO"
 
 // PIO represents one of the two PIO peripherals in the RP2040
 type PIO struct {
-	// Bitmask of used instruction space
-	usedSpaceMask uint32
-	// HW is the actual hardware device
+	// hw points to the PIO hardware registers.
 	hw *rp.PIO0_Type
+	// Bitmask of used instruction space. Each PIO has 32 slots for instructions.
+	usedSpaceMask uint32
+	// Bitmask of used state machines. Each PIO has 4 state machines.
+	usedSMMask uint8
 }
 
 // BlockIndex returns 0 or 1 depending on whether the underlying device is PIO0 or PIO1.
@@ -57,6 +60,18 @@ func (pio *PIO) StateMachine(index uint8) StateMachine {
 		pio:   pio,
 		index: index,
 	}
+}
+
+// ClaimtateMachine returns an unused state machine
+// or an error if all state machines on this PIO are claimed.
+func (pio *PIO) ClaimStateMachine() (sm StateMachine, err error) {
+	for i := uint8(0); i < 4; i++ {
+		sm = pio.StateMachine(i)
+		if sm.Claim() {
+			return sm, nil
+		}
+	}
+	return StateMachine{}, errStateMachineClaimed
 }
 
 // AddProgram loads a PIO program into PIO memory and returns the offset where it was loaded.

@@ -17,11 +17,30 @@ type StateMachine struct {
 	index uint8
 }
 
+// IsClaimed returns true if the state machine is claimed by other code and should not be used.
+func (sm StateMachine) IsClaimed() bool { return sm.pio.usedSMMask&(1<<sm.index) != 0 }
+
+// Unclaim releases the state machine for use by other code.
+func (sm StateMachine) Unclaim() { sm.pio.usedSMMask &^= (1 << sm.index) }
+
+// Claim attempts to claim the state machine for use by the caller and returns
+// true if successful, or false if StateMachine already claimed.
+func (sm StateMachine) Claim() bool {
+	if sm.IsClaimed() {
+		return false
+	}
+	sm.pio.usedSMMask |= 1 << sm.index
+	return true
+}
+
 // HW returns a pointer to the configuration hardware registers for this state machine.
 func (sm StateMachine) HW() *statemachineHW { return sm.pio.smHW(sm.index) }
 
 // PIO returns the PIO that this state machine is part of.
-func (sm StateMachine) PIO() *PIO { return sm.pio }
+func (sm StateMachine) PIO() *PIO {
+	sm.pio.BlockIndex() // Panic if PIO or state machine not at valid offset.
+	return sm.pio
+}
 
 // StateMachineIndex returns the index of the state machine within the PIO.
 func (sm StateMachine) StateMachineIndex() uint8 { return sm.index }

@@ -11,7 +11,8 @@ import (
 func main() {
 	time.Sleep(time.Second)
 	const pin = machine.LED
-	pulsar, err := piolib.NewPulsar(pio.PIO0.StateMachine(0), pin)
+	sm, _ := pio.PIO0.ClaimStateMachine()
+	pulsar, err := piolib.NewPulsar(sm, pin)
 	if err != nil {
 		panic(err.Error())
 	}
