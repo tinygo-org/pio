@@ -11,7 +11,7 @@ import (
 
 func main() {
 	const ws2812Pin = machine.GP16
-	ws, err := piolib.NewWS2812(pio.PIO0.StateMachine(0), ws2812Pin)
+	ws, err := piolib.NewWS2812(pio.PIO0.StateMachine(0), ws2812Pin, 8, 400_000)
 	if err != nil {
 		panic(err.Error())
 	}
