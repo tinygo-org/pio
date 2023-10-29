@@ -38,9 +38,6 @@ type PIO struct {
 	hw *rp.PIO0_Type
 }
 
-// HW returns a pointer to the PIO's hardware registers.
-func (pio *PIO) HW() *rp.PIO0_Type { return pio.hw }
-
 // BlockIndex returns 0 or 1 depending on whether the underlying device is PIO0 or PIO1.
 func (pio *PIO) BlockIndex() uint8 {
 	switch pio.hw {
@@ -179,3 +176,55 @@ func (pio *PIO) smHW(index uint8) *statemachineHW {
 func (pio *PIO) PinMode() machine.PinMode {
 	return machine.PinPIO0 + machine.PinMode(pio.BlockIndex())
 }
+
+// GetIRQ gets lowest octet of PIO IRQ register.
+// State machine IRQ flags register. There are 8
+// state machine IRQ flags, which can be set, cleared, and waited on
+// by the state machines. There’s no fixed association between
+// flags and state machines — any state machine can use any flag.
+// Any of the 8 flags can be used for timing synchronisation
+// between state machines, using IRQ and WAIT instructions. The
+// lower four of these flags are also routed out to system-level
+// interrupt requests, alongside FIFO status interrupts — see e.g.
+// IRQ0_INTE.
+func (pio *PIO) GetIRQ() uint8 {
+	return uint8(pio.hw.GetIRQ())
+}
+
+// ClearIRQ clears IRQ flags when 1 is written to bit flag.
+func (pio *PIO) ClearIRQ(irqmsk uint8) {
+	pio.hw.SetIRQ(uint32(irqmsk))
+}
+
+// HW returns a pointer to the PIO's hardware registers.
+func (pio *PIO) HW() *pioHW { return (*pioHW)(unsafe.Pointer(pio.hw)) }
+
+// Programmable IO block
+type pioHW struct {
+	CTRL              volatile.Register32 // 0x0
+	FSTAT             volatile.Register32 // 0x4
+	FDEBUG            volatile.Register32 // 0x8
+	FLEVEL            volatile.Register32 // 0xC
+	TXF               [4]volatile.Register32
+	RXF               [4]volatile.Register32
+	IRQ               volatile.Register32     // 0x30
+	IRQ_FORCE         volatile.Register32     // 0x34
+	INPUT_SYNC_BYPASS volatile.Register32     // 0x38
+	DBG_PADOUT        volatile.Register32     // 0x3C
+	DBG_PADOE         volatile.Register32     // 0x40
+	DBG_CFGINFO       volatile.Register32     // 0x44
+	INSTR_MEM         [32]volatile.Register32 // 0x48..0xC4
+	SM                [4]statemachineHW       // SM0=[0xC8..0xDC], .. 0x124
+	INTR              volatile.Register32     // 0x128
+	IRQ_INT           [2]irqINTHW             // 0x12C..0x140
+}
+
+type irqINTHW struct {
+	E volatile.Register32
+	F volatile.Register32
+	S volatile.Register32
+}
+
+const (
+	sizeOK = unsafe.Sizeof(rp.PIO0_Type{}) == unsafe.Sizeof(pioHW{})
+)

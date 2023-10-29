@@ -10,7 +10,7 @@ func blinkProgramInit(sm pio.StateMachine, offset uint8, pin machine.Pin) {
 	pin.Configure(machine.PinConfig{Mode: sm.PIO().PinMode()})
 	sm.SetConsecutivePinDirs(pin, 1, true)
 	cfg := blinkProgramDefaultConfig(offset)
-	cfg.SetOutPins(pin, 1)
+	cfg.SetSetPins(pin, 1)
 	sm.Init(offset, cfg)
 }
 // blink

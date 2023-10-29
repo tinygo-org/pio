@@ -60,11 +60,11 @@ func (pl *pioParallel) EnableDMA(dmaChan uint32) error {
 	if dmaChan == NoDMA {
 		return nil
 	}
-	pioHW := pl.sm.PIO().HW()
+	Pio := pl.sm.PIO()
 	dmaConfig := getDefaultDMAConfig(dmaChan)
 	setTransferDataSize(dmaConfig, DMA_SIZE_8)
 	setBSwap(dmaConfig, false)
-	setDREQ(dmaConfig, pioHW.GetIRQ())
+	setDREQ(dmaConfig, uint32(Pio.GetIRQ()))
 	dmaChannelConfigure(dmaChan, dmaConfig, pl.sm.TxReg(), nil, 0, false)
 	return nil
 }
