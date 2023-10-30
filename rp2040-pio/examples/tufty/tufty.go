@@ -26,7 +26,7 @@ func main() {
 	println("Initializing Display")
 	const MHz = 1_000_000
 	sm, _ := pio.PIO0.ClaimStateMachine()
-	p8tx, err := piolib.NewPIOParallel(sm, wrPin, db0Pin, 1*MHz)
+	p8tx, err := piolib.NewParallel8Tx(sm, wrPin, db0Pin, 1*MHz)
 	if err != nil {
 		panic(err.Error())
 	}

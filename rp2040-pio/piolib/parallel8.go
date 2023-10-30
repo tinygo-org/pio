@@ -18,7 +18,7 @@ type Parallel8Tx struct {
 // unused for now.
 const noDMA uint32 = 0xffff_ffff
 
-func NewPIOParallel(sm pio.StateMachine, wr, dStart machine.Pin, baud uint32) (*Parallel8Tx, error) {
+func NewParallel8Tx(sm pio.StateMachine, wr, dStart machine.Pin, baud uint32) (*Parallel8Tx, error) {
 	Pio := sm.PIO()
 	offset, err := Pio.AddProgram(parallel8Instructions, parallel8Origin)
 	if err != nil {
