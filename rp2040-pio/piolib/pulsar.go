@@ -3,11 +3,14 @@
 package piolib
 
 import (
+	"errors"
 	"machine"
 	"time"
 
 	pio "github.com/tinygo-org/pio/rp2040-pio"
 )
+
+var errQueueFull = errors.New("Pulsar:queue full")
 
 // Pulsar implements a square-wave generator that pulses a determined amount of pulses.
 type Pulsar struct {
@@ -32,13 +35,26 @@ func NewPulsar(sm pio.StateMachine, pin machine.Pin) (*Pulsar, error) {
 	return &Pulsar{sm: sm, offsetPlusOne: offset + 1}, nil
 }
 
-// Start starts the pulsar and does not block.
-func (p *Pulsar) Start(count uint32) {
+// IsQueueFull checks if the pulsar's queue is full.
+func (p *Pulsar) IsQueueFull() bool {
 	p.mustValid()
+	return p.sm.IsTxFIFOFull()
+}
+
+// Queued returns amount of actions in the pulsar's queue.
+func (p *Pulsar) Queued() uint8 {
+	return uint8(p.sm.TxFIFOLevel())
+}
+
+// TryQueue adds an action to the pulsar's queue. If the queue is full it returns an error.
+func (p *Pulsar) TryQueue(count uint32) error {
 	if count == 0 {
-		return
+		return nil
+	} else if p.IsQueueFull() {
+		return errQueueFull
 	}
 	p.sm.TxPut(count - 1)
+	return nil
 }
 
 // SetPeriod sets the pulsar's square-wave period. Is safe to call while pulsar is running.
@@ -59,7 +75,8 @@ func (p *Pulsar) Pause(disabled bool) {
 	p.sm.SetEnabled(!disabled)
 }
 
-// Stop stops and resets the pulsar to initial state. Will unpause pulsar as well if paused.
+// Stop stops and resets the pulsar to initial state.
+// Will unpause pulsar as well if paused and clear it's queue.
 func (p *Pulsar) Stop() {
 	p.mustValid()
 	// See StateMachine.Init for reference on this sequence of operations.

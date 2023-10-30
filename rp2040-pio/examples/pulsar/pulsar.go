@@ -26,7 +26,7 @@ func main() {
 				panic(err.Error())
 			}
 			for i := uint32(10); i < 100; i *= 2 {
-				pulsar.Start(i)
+				pulsar.TryQueue(i)
 				time.Sleep(time.Second / 2)
 			}
 		}
