@@ -34,7 +34,7 @@ func NewParallel8Tx(sm pio.StateMachine, wr, dStart machine.Pin, baud uint32) (*
 	for i := dStart; i < dStart+nPins; i++ {
 		i.Configure(pinCfg)
 	}
-	wr.Configure(pinCfg)
+	// wr.Configure(pinCfg)
 
 	sm.SetPindirsConsecutive(dStart, nPins, true)
 
@@ -43,9 +43,9 @@ func NewParallel8Tx(sm pio.StateMachine, wr, dStart machine.Pin, baud uint32) (*
 	cfg.SetOutPins(dStart, nPins)
 	cfg.SetSidesetPins(wr)
 	cfg.SetFIFOJoin(pio.FifoJoinTx)
-	cfg.SetOutShift(false, true, nPins)
+	cfg.SetOutShift(true, true, nPins)
 
-	baud *= 4 // Parallel is 4 instructions, so we need to multiply baud by 4 to get PIO frequency.
+	baud *= 6 // ??? why 6?
 	whole, frac, err := pio.ClkDivFromPeriod(1e9/baud, machine.CPUFrequency())
 	if err != nil {
 		return nil, err
