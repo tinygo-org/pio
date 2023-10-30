@@ -172,6 +172,8 @@ func ClkDivFromPeriod(period, freq uint32) (whole uint16, frac uint8, err error)
 	//  256*whole + frac = 256*clockfreq*period/1e9
 	clkdiv := 256 * int64(period) * int64(freq) / int64(1e9)
 	if clkdiv > 256*math.MaxUint16 {
+		return 0, 0, errors.New("ClkDivFromPeriod: period or CPU frequency too large")
+	} else if clkdiv < 256 {
 		return 0, 0, errors.New("ClkDivFromPeriod: period or CPU frequency too small")
 	}
 	whole = uint16(clkdiv / 256)
