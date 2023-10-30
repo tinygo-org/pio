@@ -165,12 +165,12 @@ func EncodeNOP() uint16 {
 // ClkDivFromPeriod calculates the CLKDIV register values
 // to reach a given StateMachine cycle period given the RP2040 CPU frequency.
 // period is expected to be in nanoseconds. freq is expected to be in Hz.
-func ClkDivFromPeriod(period, freq uint32) (whole uint16, frac uint8, err error) {
+func ClkDivFromPeriod(period, cpuFreq uint32) (whole uint16, frac uint8, err error) {
 	//  freq = 256*clockfreq / (256*whole + frac)
 	// where period = 1e9/freq => freq = 1e9/period, so:
 	//  1e9/period = 256*clockfreq / (256*whole + frac) =>
 	//  256*whole + frac = 256*clockfreq*period/1e9
-	clkdiv := 256 * int64(period) * int64(freq) / int64(1e9)
+	clkdiv := 256 * int64(period) * int64(cpuFreq) / int64(1e9)
 	if clkdiv > 256*math.MaxUint16 {
 		return 0, 0, errors.New("ClkDivFromPeriod: too large period or CPU frequency")
 	} else if clkdiv < 256 {
