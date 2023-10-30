@@ -239,23 +239,39 @@ func (sm StateMachine) SetPindirsMasked(dirMask, pinMask uint32) {
 func (sm StateMachine) setPinExec(dest SrcDest, valueMask, pinMask uint32) {
 	hw := sm.HW()
 	pinctrlSaved := hw.PINCTRL.Get()
-	exectrlSaved := hw.EXECCTRL.Get()
+	execctrlSaved := hw.EXECCTRL.Get()
 	hw.EXECCTRL.ClearBits(1 << rp.PIO0_SM0_EXECCTRL_OUT_STICKY_Pos)
-	// https://github.com/raspberrypi/pico-sdk/blob/6a7db34ff63345a7badec79ebea3aaef1712f374/src/rp2_common/hardware_pio/pio.c#L178
-	for pinMask != 0 {
-		base := uint32(bits.TrailingZeros32(pinMask))
+	// select the algorithm to use. Naive or the pico-sdk way.
+	const naive = true
+	if naive {
+		for i := uint8(0); i < 32; i++ {
+			if pinMask&(1<<i) == 0 {
+				continue
+			}
+			hw.PINCTRL.Set(
+				1<<rp.PIO0_SM0_PINCTRL_SET_COUNT_Pos |
+					uint32(i)<<rp.PIO0_SM0_PINCTRL_SET_BASE_Pos,
+			)
+			value := 0x1 & uint16(valueMask>>i)
+			sm.Exec(EncodeSet(dest, value))
+		}
+	} else {
+		for pinMask != 0 {
+			// https://github.com/raspberrypi/pico-sdk/blob/6a7db34ff63345a7badec79ebea3aaef1712f374/src/rp2_common/hardware_pio/pio.c#L178
+			base := uint32(bits.TrailingZeros32(pinMask))
 
-		hw.PINCTRL.Set(
-			1<<rp.PIO0_SM0_PINCTRL_SET_COUNT_Pos |
-				base<<rp.PIO0_SM0_PINCTRL_SET_BASE_Pos,
-		)
+			hw.PINCTRL.Set(
+				1<<rp.PIO0_SM0_PINCTRL_SET_COUNT_Pos |
+					base<<rp.PIO0_SM0_PINCTRL_SET_BASE_Pos,
+			)
 
-		value := 0x1 & uint16(valueMask>>base)
-		sm.Exec(EncodeSet(dest, value))
-		pinMask &= pinMask - 1
+			value := 0x1 & uint16(valueMask>>base)
+			sm.Exec(EncodeSet(dest, value))
+			pinMask &= pinMask - 1
+		}
 	}
 	hw.PINCTRL.Set(pinctrlSaved)
-	hw.EXECCTRL.Set(exectrlSaved)
+	hw.EXECCTRL.Set(execctrlSaved)
 }
 
 const (
