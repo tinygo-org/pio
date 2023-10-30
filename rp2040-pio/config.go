@@ -63,6 +63,9 @@ func (cfg *StateMachineConfig) SetWrap(wrapTarget uint8, wrap uint8) {
 }
 
 // SetInShift sets the 'in' shifting parameters in a state machine configuration
+//   - shiftRight is true if ISR shift direction is right, false if left.
+//   - autoPush enables automatic ISR refilling after all of the ISR bits have been consumed.
+//   - pushThreshold is threshold in bits to shift in before auto/conditional re-pushing of the ISR.
 func (cfg *StateMachineConfig) SetInShift(shiftRight bool, autoPush bool, pushThreshold uint16) {
 	cfg.ShiftCtrl = cfg.ShiftCtrl &
 		^uint32(rp.PIO0_SM0_SHIFTCTRL_IN_SHIFTDIR_Msk|
@@ -74,13 +77,16 @@ func (cfg *StateMachineConfig) SetInShift(shiftRight bool, autoPush bool, pushTh
 }
 
 // SetOutShift sets the 'out' shifting parameters in a state machine configuration
-func (cfg *StateMachineConfig) SetOutShift(shiftRight bool, autoPush bool, pushThreshold uint16) {
+//   - shiftRight is true if OSR shift direction is right, false if left.
+//   - autoPull enables automatic OSR refilling after all of the OSR bits have been consumed.
+//   - pushThreshold is threshold in bits to shift out before auto/conditional re-pulling of the OSR.
+func (cfg *StateMachineConfig) SetOutShift(shiftRight bool, autoPull bool, pushThreshold uint16) {
 	cfg.ShiftCtrl = cfg.ShiftCtrl &
 		^uint32(rp.PIO0_SM0_SHIFTCTRL_OUT_SHIFTDIR_Msk|
 			rp.PIO0_SM0_SHIFTCTRL_AUTOPULL_Msk|
 			rp.PIO0_SM0_SHIFTCTRL_PULL_THRESH_Msk) |
 		(boolToBit(shiftRight) << rp.PIO0_SM0_SHIFTCTRL_OUT_SHIFTDIR_Pos) |
-		(boolToBit(autoPush) << rp.PIO0_SM0_SHIFTCTRL_AUTOPULL_Pos) |
+		(boolToBit(autoPull) << rp.PIO0_SM0_SHIFTCTRL_AUTOPULL_Pos) |
 		(uint32(pushThreshold&0x1f) << rp.PIO0_SM0_SHIFTCTRL_PULL_THRESH_Pos)
 }
 
@@ -110,7 +116,9 @@ func (cfg *StateMachineConfig) SetSidesetPins(firstPin machine.Pin) {
 		(uint32(firstPin) << rp.PIO0_SM0_PINCTRL_SIDESET_BASE_Pos)
 }
 
-// SetOutPins sets the pins a PIO 'out' instruction modifies. Can overlap with pins in `in`, `set` and `sideset`.
+// SetOutPins sets the pins a PIO 'out' instruction modifies. Can overlap with pins in IN, SET and SIDESET.
+// `out` instructions receive data from the OSR (output shift register) and write it to the GPIO pins in bitwise format,
+// thus OUT pins are best suited for driving data protocols with multiple data wires.
 //   - Base defines the lowest-numbered pin that will be affected by an OUT PINS,
 //     OUT PINDIRS or MOV PINS instruction. The data written to this pin will always be
 //     the least-significant bit of the OUT or MOV data.
@@ -123,7 +131,12 @@ func (cfg *StateMachineConfig) SetOutPins(base machine.Pin, count uint8) {
 }
 
 // SetSetPins sets the pins a PIO 'set' instruction modifies.
-// Can overlap with pins in `in`, `out` and `sideset`.
+// Can overlap with pins in IN, OUT and SIDESET.
+// Set pins are best suited to assert control signals such as clock/chip-selects.
+//
+// The mapping of SET and OUT onto pins is configured independently. They may be mapped to distinct locations, for example
+// if one pin is to be used as a clock signal, and another for data. They may also be overlapping ranges of pins: a UART
+// transmitter might use SET to assert start and stop bits, and OUT instructions to shift out FIFO data to the same pins.
 func (cfg *StateMachineConfig) SetSetPins(base machine.Pin, count uint8) {
 	checkPinBaseAndCount(base, count)
 	cfg.PinCtrl = (cfg.PinCtrl & ^uint32(rp.PIO0_SM0_PINCTRL_SET_BASE_Msk|rp.PIO0_SM0_PINCTRL_SET_COUNT_Msk)) |
@@ -131,11 +144,39 @@ func (cfg *StateMachineConfig) SetSetPins(base machine.Pin, count uint8) {
 		(uint32(count) << rp.PIO0_SM0_PINCTRL_SET_COUNT_Pos)
 }
 
-// SetInPins in a state machine configuration. Can overlap with out, set and side-set pins.
+// SetInPins in a state machine configuration. Can overlap with OUT, SET and SIDESET pins.
 func (cfg *StateMachineConfig) SetInPins(base machine.Pin) {
 	checkPinBaseAndCount(base, 1)
-	// c->pinctrl = (c->pinctrl & ~PIO_SM0_PINCTRL_IN_BASE_BITS) | (in_base << PIO_SM0_PINCTRL_IN_BASE_LSB);
 	cfg.PinCtrl = (cfg.PinCtrl & ^uint32(rp.PIO0_SM0_PINCTRL_IN_BASE_Msk)) | (uint32(base) << rp.PIO0_SM0_PINCTRL_IN_BASE_Pos)
+}
+
+// SetJmpPin sets the gpio pin to use as the source for a `jmp pin` instruction.
+func (cfg *StateMachineConfig) SetJmpPin(pin machine.Pin) {
+	checkPinBaseAndCount(pin, 1)
+	cfg.ExecCtrl = (cfg.ExecCtrl & ^uint32(rp.PIO0_SM0_EXECCTRL_JMP_PIN_Msk)) | (uint32(pin) << rp.PIO0_SM0_EXECCTRL_JMP_PIN_Pos)
+}
+
+// SetOutSpecial set special 'out' operations in a state machine configuration.
+//   - sticky to enable 'sticky' output (i.e. re-asserting most recent OUT/SET pin values on subsequent cycles).
+//   - hasEnablePin true to enable auxiliary OUT enable pin.
+//   - enable pin for auxiliary OUT enable.
+func (cfg *StateMachineConfig) SetOutSpecial(sticky, hasEnablePin bool, enable machine.Pin) {
+	cfg.ExecCtrl = (cfg.ExecCtrl &
+		^uint32(rp.PIO0_SM0_EXECCTRL_OUT_STICKY_Msk|rp.PIO0_SM0_EXECCTRL_INLINE_OUT_EN_Msk|
+			rp.PIO0_SM0_EXECCTRL_OUT_EN_SEL_Msk)) |
+		(boolToBit(sticky) << rp.PIO0_SM0_EXECCTRL_OUT_STICKY_Pos) |
+		(boolToBit(hasEnablePin) << rp.PIO0_SM0_EXECCTRL_INLINE_OUT_EN_Pos) |
+		((uint32(enable) << rp.PIO0_SM0_EXECCTRL_OUT_EN_SEL_Pos) & rp.PIO0_SM0_EXECCTRL_OUT_EN_SEL_Msk)
+}
+
+// SetMovStatus sets source for 'mov status' in a state machine configuration.
+//   - statusSel is the status operation selector.
+//   - statusN parameter for the mov status operation (currently a bit count).
+func (cfg *StateMachineConfig) SetMovStatus(statusSel MovStatus, statusN uint32) {
+	cfg.ExecCtrl = (cfg.ExecCtrl &
+		^uint32(rp.PIO0_SM0_EXECCTRL_STATUS_SEL_Msk|rp.PIO0_SM0_EXECCTRL_STATUS_N_Msk)) |
+		((uint32(statusSel) << rp.PIO0_SM0_EXECCTRL_STATUS_SEL_Pos) & rp.PIO0_SM0_EXECCTRL_STATUS_SEL_Msk) |
+		((statusN << rp.PIO0_SM0_EXECCTRL_STATUS_N_Pos) & rp.PIO0_SM0_EXECCTRL_STATUS_N_Msk)
 }
 
 func checkPinBaseAndCount(base machine.Pin, count uint8) {
@@ -157,15 +198,16 @@ const (
 	FifoJoinRx
 )
 
+// MOV status types.
+type MovStatus uint8
+
+const (
+	MovStatusTxLessthan MovStatus = iota
+	MovStatusRxLessthan
+)
+
 // SetFIFOJoin Setup the FIFO joining in a state machine configuration.
 func (cfg *StateMachineConfig) SetFIFOJoin(join FifoJoin) {
-	/*
-		static inline void sm_config_set_fifo_join(pio_sm_config *c, enum pio_fifo_join join) {
-		    valid_params_if(PIO, join == PIO_FIFO_JOIN_NONE || join == PIO_FIFO_JOIN_TX || join == PIO_FIFO_JOIN_RX);
-		    c->shiftctrl = (c->shiftctrl & (uint)~(PIO_SM0_SHIFTCTRL_FJOIN_TX_BITS | PIO_SM0_SHIFTCTRL_FJOIN_RX_BITS)) |
-		                   (((uint)join) << PIO_SM0_SHIFTCTRL_FJOIN_TX_LSB);
-		}
-	*/
 	if join > FifoJoinRx {
 		panic("SetFIFOJoin: join")
 	}

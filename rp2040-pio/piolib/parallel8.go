@@ -3,6 +3,7 @@
 package piolib
 
 import (
+	"errors"
 	"machine"
 
 	pio "github.com/tinygo-org/pio/rp2040-pio"
@@ -19,21 +20,30 @@ type Parallel8Tx struct {
 const noDMA uint32 = 0xffff_ffff
 
 func NewParallel8Tx(sm pio.StateMachine, wr, dStart machine.Pin, baud uint32) (*Parallel8Tx, error) {
+	const nPins = 8
+	if dStart+nPins > 31 {
+		return nil, errors.New("invalid D0..D7 pin range")
+	}
 	Pio := sm.PIO()
 	offset, err := Pio.AddProgram(parallel8Instructions, parallel8Origin)
 	if err != nil {
 		return nil, err
 	}
 
-	dStart.Configure(machine.PinConfig{Mode: Pio.PinMode()})
-	sm.SetPindirsConsecutive(dStart, 8, true)
-	wr.Configure(machine.PinConfig{Mode: Pio.PinMode()})
+	pinCfg := machine.PinConfig{Mode: Pio.PinMode()}
+	for i := dStart; i < dStart+nPins; i++ {
+		i.Configure(pinCfg)
+	}
+	wr.Configure(pinCfg)
+
+	sm.SetPindirsConsecutive(dStart, nPins, true)
+
 	cfg := parallel8ProgramDefaultConfig(offset)
 
-	cfg.SetOutPins(dStart, 8)
+	cfg.SetOutPins(dStart, nPins)
 	cfg.SetSidesetPins(wr)
 	cfg.SetFIFOJoin(pio.FifoJoinTx)
-	cfg.SetOutShift(false, true, 8)
+	cfg.SetOutShift(false, true, nPins)
 
 	baud *= 4 // Parallel is 4 instructions, so we need to multiply baud by 4 to get PIO frequency.
 	whole, frac, err := pio.ClkDivFromPeriod(1e9/baud, machine.CPUFrequency())
@@ -53,7 +63,7 @@ func (pl *Parallel8Tx) Write(data []uint8) error {
 		// pl.dmaWrite(data)
 		return nil
 	}
-	retries := int8(32)
+	retries := int8(127)
 	for _, char := range data {
 		if !pl.sm.IsTxFIFOFull() {
 			pl.sm.TxPut(uint32(char))

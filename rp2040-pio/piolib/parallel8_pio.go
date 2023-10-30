@@ -8,13 +8,12 @@ import (
 // parallel8
 
 const parallel8WrapTarget = 0
-const parallel8Wrap = 2
+const parallel8Wrap = 1
 
 var parallel8Instructions = []uint16{
 		//     .wrap_target
-		0x80a0, //  0: pull   block           side 0     
-		0x6008, //  1: out    pins, 8         side 0     
-		0xb142, //  2: nop                    side 1 [1] 
+		0x6008, //  0: out    pins, 8         side 0     
+		0xb142, //  1: nop                    side 1 [1] 
 		//     .wrap
 }
 const parallel8Origin = -1
