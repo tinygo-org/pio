@@ -24,10 +24,11 @@ including:
 - DPI or VGA (via resistor DAC)
 
 PIO is programmable in the same sense as a processor and has a total of nine instructions: JMP, WAIT, IN, OUT, PUSH, PULL, MOV, IRQ, and SET. These are programmed in PIO assembly format describing a PIO program, where each command corresponds to one instruction in the output binary. Below is an example program in PIO assembly:
+
 ```pio
 .program squarewave
 again:
-    set pins, 1 [1]; Drive pin high and then delay for one cycle
-    set pins, 0; Drive pin low
-    jmp again; Set PC to label `again`
+    set pins, 1 [1] ; Drive pin high and then delay for one cycle
+    set pins, 0     ; Drive pin low
+    jmp again       ; Set PC to label `again`
 ```
