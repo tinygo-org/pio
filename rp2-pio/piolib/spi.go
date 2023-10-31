@@ -21,8 +21,8 @@ func NewSPI(sm pio.StateMachine, spicfg machine.SPIConfig) (*SPI, error) {
 	if !sm.IsValid() {
 		return nil, errors.New("invalid state machine")
 	}
-	spiPeriod := 1e9 / spicfg.Frequency
-	whole, frac, err := pio.ClkDivFromPeriod(spiPeriod, machine.CPUFrequency())
+
+	whole, frac, err := pio.ClkDivFromFrequency(spicfg.Frequency, machine.CPUFrequency())
 	if err != nil {
 		return nil, err
 	}

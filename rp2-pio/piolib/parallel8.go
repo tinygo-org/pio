@@ -24,6 +24,11 @@ func NewParallel8Tx(sm pio.StateMachine, wr, dStart machine.Pin, baud uint32) (*
 	if dStart+nPins > 31 {
 		return nil, errors.New("invalid D0..D7 pin range")
 	}
+	baud *= 6 // ??? why 6?
+	whole, frac, err := pio.ClkDivFromFrequency(baud, machine.CPUFrequency())
+	if err != nil {
+		return nil, err
+	}
 	Pio := sm.PIO()
 	offset, err := Pio.AddProgram(parallel8Instructions, parallel8Origin)
 	if err != nil {
@@ -46,11 +51,6 @@ func NewParallel8Tx(sm pio.StateMachine, wr, dStart machine.Pin, baud uint32) (*
 	cfg.SetFIFOJoin(pio.FifoJoinTx)
 	cfg.SetOutShift(true, true, nPins)
 
-	baud *= 6 // ??? why 6?
-	whole, frac, err := pio.ClkDivFromPeriod(1e9/baud, machine.CPUFrequency())
-	if err != nil {
-		return nil, err
-	}
 	cfg.SetClkDivIntFrac(whole, frac)
 
 	sm.Init(offset, cfg)

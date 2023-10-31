@@ -165,16 +165,32 @@ func EncodeNOP() uint16 {
 // ClkDivFromPeriod calculates the CLKDIV register values
 // to reach a given StateMachine cycle period given the RP2040 CPU frequency.
 // period is expected to be in nanoseconds. freq is expected to be in Hz.
+//
+// Prefer using ClkDivFromFrequency if possible for speed and accuracy.
 func ClkDivFromPeriod(period, cpuFreq uint32) (whole uint16, frac uint8, err error) {
 	//  freq = 256*clockfreq / (256*whole + frac)
 	// where period = 1e9/freq => freq = 1e9/period, so:
 	//  1e9/period = 256*clockfreq / (256*whole + frac) =>
 	//  256*whole + frac = 256*clockfreq*period/1e9
-	clkdiv := 256 * int64(period) * int64(cpuFreq) / int64(1e9)
+	return splitClkdiv(256 * uint64(period) * uint64(cpuFreq) / uint64(1e9))
+}
+
+// ClkDivFromFrequency calculates the CLKDIV register values
+// to reach a given StateMachine cycle frequency. freq and cpuFreq are expected to be in Hz.
+//
+// Use powers of two for freq to avoid slow divisions and rounding errors.
+func ClkDivFromFrequency(freq, cpuFreq uint32) (whole uint16, frac uint8, err error) {
+	//  freq = 256*clockfreq / (256*whole + frac)
+	//  256*whole + frac = 256*clockfreq / freq
+	return splitClkdiv(256 * uint64(cpuFreq) / uint64(freq))
+
+}
+
+func splitClkdiv(clkdiv uint64) (whole uint16, frac uint8, err error) {
 	if clkdiv > 256*math.MaxUint16 {
-		return 0, 0, errors.New("ClkDivFromPeriod: too large period or CPU frequency")
+		return 0, 0, errors.New("ClkDiv: too large period or CPU frequency")
 	} else if clkdiv < 256 {
-		return 0, 0, errors.New("ClkDivFromPeriod: too small period or CPU frequency")
+		return 0, 0, errors.New("ClkDiv: too small period or CPU frequency")
 	}
 	whole = uint16(clkdiv / 256)
 	frac = uint8(clkdiv % 256)
