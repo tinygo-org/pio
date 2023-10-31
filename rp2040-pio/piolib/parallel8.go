@@ -30,12 +30,13 @@ func NewParallel8Tx(sm pio.StateMachine, wr, dStart machine.Pin, baud uint32) (*
 		return nil, err
 	}
 
+	// Configure pins.
 	pinCfg := machine.PinConfig{Mode: Pio.PinMode()}
 	for i := dStart; i < dStart+nPins; i++ {
 		i.Configure(pinCfg)
 	}
-	// wr.Configure(pinCfg)
-
+	wr.Configure(pinCfg)
+	sm.SetPindirsConsecutive(wr, 1, true)
 	sm.SetPindirsConsecutive(dStart, nPins, true)
 
 	cfg := parallel8ProgramDefaultConfig(offset)

@@ -203,7 +203,8 @@ func (sm StateMachine) Exec(instr uint16) {
 	sm.HW().INSTR.Set(uint32(instr))
 }
 
-// SetPindirsConsecutive sets a range of pins to either 'in' or 'out'.
+// SetPindirsConsecutive sets a range of pins to either 'in' or 'out'. This must be done
+// for all used pins before the state machine is started, including SET, IN, OUT and SIDESET pins.
 func (sm StateMachine) SetPindirsConsecutive(pin machine.Pin, count uint8, isOut bool) {
 	checkPinBaseAndCount(pin, count)
 	sm.SetPindirsMasked(makePinmask(uint8(pin), count, uint8(boolToBit(isOut))))
