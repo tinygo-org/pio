@@ -6,7 +6,7 @@ import (
 	"machine"
 	"time"
 
-	pio "github.com/tinygo-org/pio/rp2040-pio"
+	pio "github.com/tinygo-org/pio/rp2-pio"
 )
 
 func main() {

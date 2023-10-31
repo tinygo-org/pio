@@ -4,7 +4,7 @@ See page 306 of the [RP2040 datasheet](https://datasheets.raspberrypi.com/rp2040
 
 
 ### piolib
-This module contains the [piolib](./rp2040-pio/piolib) package which contains importable drivers for use with a PIO such as:
+This module contains the [piolib](./rp2-pio/piolib) package which contains importable drivers for use with a PIO such as:
 
 - SPI driver
 - 8-pin send-only parallel bus

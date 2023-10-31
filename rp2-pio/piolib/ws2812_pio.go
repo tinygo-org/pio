@@ -2,7 +2,7 @@
 
 package piolib
 import (
-    pio "github.com/tinygo-org/pio/rp2040-pio"
+    pio "github.com/tinygo-org/pio/rp2-pio"
 )
 // ws2812_led
 

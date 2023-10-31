@@ -6,7 +6,7 @@ import (
 	"image/color"
 	"machine"
 
-	pio "github.com/tinygo-org/pio/rp2040-pio"
+	pio "github.com/tinygo-org/pio/rp2-pio"
 )
 
 type WS2812 struct {

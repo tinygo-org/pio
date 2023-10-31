@@ -5,8 +5,8 @@ import (
 	"machine"
 	"time"
 
-	pio "github.com/tinygo-org/pio/rp2040-pio"
-	"github.com/tinygo-org/pio/rp2040-pio/piolib"
+	pio "github.com/tinygo-org/pio/rp2-pio"
+	"github.com/tinygo-org/pio/rp2-pio/piolib"
 )
 
 const clockHz = 133000000

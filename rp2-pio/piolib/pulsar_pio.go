@@ -3,7 +3,7 @@
 //go:build rp2040
 package piolib
 import (
-    pio "github.com/tinygo-org/pio/rp2040-pio"
+    pio "github.com/tinygo-org/pio/rp2-pio"
 )
 // pulsar
 

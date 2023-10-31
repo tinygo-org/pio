@@ -7,7 +7,7 @@ import (
 	"machine"
 	"time"
 
-	pio "github.com/tinygo-org/pio/rp2040-pio"
+	pio "github.com/tinygo-org/pio/rp2-pio"
 )
 
 var errQueueFull = errors.New("Pulsar:queue full")

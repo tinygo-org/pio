@@ -6,7 +6,7 @@ import (
 	"errors"
 	"machine"
 
-	pio "github.com/tinygo-org/pio/rp2040-pio"
+	pio "github.com/tinygo-org/pio/rp2-pio"
 )
 
 type SPI struct {

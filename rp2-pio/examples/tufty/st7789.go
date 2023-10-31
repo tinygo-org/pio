@@ -6,7 +6,7 @@ import (
 	"machine"
 	"time"
 
-	"github.com/tinygo-org/pio/rp2040-pio/piolib"
+	"github.com/tinygo-org/pio/rp2-pio/piolib"
 )
 
 // ST7789 wraps a Parallel ST7789 Display
