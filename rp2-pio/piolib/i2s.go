@@ -7,9 +7,9 @@ import (
 )
 
 type I2S struct {
-	playBuffer []byte
-	sm         pio.StateMachine
-	offset     uint8
+	sm      pio.StateMachine
+	offset  uint8
+	writing bool
 }
 
 func NewI2S(sm pio.StateMachine, data, clockAndNext machine.Pin) (*I2S, error) {
@@ -56,4 +56,43 @@ func (i2s *I2S) SetSampleFrequency(freq uint32) error {
 	}
 	i2s.sm.SetClkDiv(whole, frac)
 	return nil
+}
+
+func (i2s *I2S) WriteMono(b []uint16) (int, error) {
+	return i2sWrite(i2s, b)
+}
+
+func (i2s *I2S) WriteStereo(b []uint32) (int, error) {
+	return i2sWrite(i2s, b)
+}
+
+func i2sWrite[T uint16 | uint32](i2s *I2S, b []T) (int, error) {
+	if len(b) == 0 {
+		return 0, nil
+	}
+	if i2s.writing {
+		return 0, errBusy
+	}
+	i2s.writing = true
+	i := 0
+	for i < len(b) {
+		if i2s.sm.IsTxFIFOFull() {
+			gosched()
+			continue
+		} else if !i2s.writing {
+			return i, nil
+		}
+		i2s.sm.TxPut(uint32(b[i]))
+		i++
+	}
+	i2s.writing = false
+	return len(b), nil
+}
+
+func (i2s *I2S) Paused(b bool) {
+	i2s.sm.SetEnabled(b)
+}
+
+func (i2s *I2S) Stop() {
+	i2s.writing = false
 }

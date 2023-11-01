@@ -5,7 +5,10 @@ import (
 	"runtime"
 )
 
-var errTimeout = errors.New("piolib:timeout")
+var (
+	errTimeout = errors.New("piolib:timeout")
+	errBusy    = errors.New("piolib:busy")
+)
 
 //go:generate pioasm -o go parallel8.pio  parallel8_pio.go
 //go:generate pioasm -o go pulsar.pio     pulsar_pio.go
