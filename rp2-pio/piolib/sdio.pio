@@ -1,0 +1,70 @@
+; https://github.com/raspberrypi/pico-extras/blob/master/src/rp2_common/pico_sd_card/sd_card.pio
+;
+; Copyright (c) 2020 Raspberry Pi (Trading) Ltd.
+;
+; SPDX-License-Identifier: BSD-3-Clause
+;
+
+; NOTE IT IS IMPERATIVE THAT YOU DON"T SCREW UP THE CLOCK EVEN FOR ONE HALF CYCLE, OTHERWISE THE DEVICE WILL LIKELY BE DISPLEASED AND MAY SEND GARBAGE (EVEN IF IT ISN"T DOING ANYTHING IMPORTANT WHEN YOU DO SO)
+
+.define sd_irq_num 7
+
+.program sdClk
+.side_set 1
+.wrap_target
+    irq sd_irq_num              side 1
+    irq clear sd_irq_num        side 0
+.wrap
+
+
+.program sdCmdOrDat
+.origin 0 ; must load at zero (offsets are hardcoded in instruction stream)
+public noArgStateWaitHigh:      ; this is a no arg state which means it must always appear in the second half of a word
+    ; make sure pins are hi when we set output dir (note if we are 1 bit we'll be configured for 1 pin only, so sending 0b1111 is fine)
+    set pins, 0b1111
+    set pindirs, 0b1111 
+
+public noArgStateWaitForCmdBits:
+    out exec, 16                    ; expected to be a jmp to a state
+
+public stateSendBits:
+    out x, 16
+    wait 0 irq sd_irq_num
+send_loop1:
+    out pins, 1
+    jmp x-- send_loop1
+
+public stateInlineInstruction:
+    out exec, 16                     ; may be any instruction
+.wrap_target
+    out exec, 16                     ; expected to be a jmp to a state
+
+public stateRxBits:
+    out x, 16
+    set pindirs, 0
+    wait 1 pin, 0
+    wait 0 pin, 0
+    wait 0 irq sd_irq_num
+    ; note we use wrap setup to configure receive bit/nibble transfers
+public wrapFor4bitRx:
+receive_loop1:
+    in pins, 1
+    jmp x-- receive_loop1
+.wrap
+
+; #if INCLUDE_4BIT
+public wrapTargetFor4bitRx:
+receive_loop4:
+    in pins, 4
+    jmp x-- receive_loop4
+    out exec, 16                      ; expected to be a jmp to a state
+; #endif
+
+% go {
+//go:build rp2040
+package piolib
+
+import (
+    pio "github.com/tinygo-org/pio/rp2-pio"
+)
+%}
