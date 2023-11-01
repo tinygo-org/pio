@@ -275,6 +275,20 @@ func (sm StateMachine) setPinExec(dest SrcDest, valueMask, pinMask uint32) {
 	hw.EXECCTRL.Set(execctrlSaved)
 }
 
+// SetWrap sets the current wrap configuration for a state machine.
+func (sm StateMachine) SetWrap(target, wrap uint8) {
+	if wrap >= 32 || target >= 32 {
+		panic("pio:bad wrap")
+	}
+	hw := sm.HW()
+	hw.EXECCTRL.ReplaceBits(
+		(uint32(target)<<rp.PIO0_SM0_EXECCTRL_WRAP_BOTTOM_Pos)|
+			(uint32(wrap)<<rp.PIO0_SM0_EXECCTRL_WRAP_TOP_Pos),
+		rp.PIO0_SM0_EXECCTRL_WRAP_TOP_Msk|rp.PIO0_SM0_EXECCTRL_WRAP_BOTTOM_Msk,
+		0,
+	)
+}
+
 const (
 	_REG_ALIAS_RW_BITS  = 0x0 << 12
 	_REG_ALIAS_XOR_BITS = 0x1 << 12
