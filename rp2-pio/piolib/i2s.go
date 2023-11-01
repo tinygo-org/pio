@@ -1,3 +1,5 @@
+//go:build rp2040 && go1.18
+
 package piolib
 
 import (
