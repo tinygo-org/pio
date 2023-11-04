@@ -47,6 +47,9 @@ func NewI2S(sm pio.StateMachine, data, clockAndNext machine.Pin) (*I2S, error) {
 		sm:     sm,
 		offset: offset,
 	}
+	// This enables the state machine. Good practice to not require users to do this
+	// since they may be confused why nothing is happening.
+	i2s.Paused(false)
 	return i2s, nil
 }
 
