@@ -12,14 +12,17 @@ import (
 // the Pico W's on-board CYW43439 WiFi module. It uses a shared data input/output pin.
 type SPI3w struct {
 	sm     pio.StateMachine
-	offset uint8
 	dma    dmaChannel
+	offset uint8
+
+	enableStatus bool
+	lastStatus   uint32
 }
 
 func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, error) {
 	whole, frac, err := pio.ClkDivFromFrequency(baud, machine.CPUFrequency())
 	if err != nil {
-		return nil, err // Early return on back clock.
+		return nil, err // Early return on bad clock.
 	}
 
 	// https://github.com/embassy-rs/embassy/blob/c4a8b79dbc927e46fcc71879673ad3410aa3174b/cyw43-pio/src/lib.rs#L90
@@ -62,59 +65,43 @@ func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, e
 	return spiw, nil
 }
 
-func (spi SPI3w) CmdWrite(cmd uint32, w []uint32) error {
+func (spi SPI3w) CmdWrite(cmd uint32, w []uint32) (err error) {
 	writeBits := len(w)*32 - 1
 	const readBits = 31
 
-	spi.prepTx(uint32(readBits), uint32(writeBits))
+	spi.prepTx(readBits, uint32(writeBits))
 
 	spi.sm.TxPut(cmd)
-	if spi.dma.IsValid() {
-		return spi.writeDMA(w)
+	err = spi.write(w)
+	if err != nil {
+		return err
 	}
-	return spi.write(w)
+	if spi.enableStatus {
+		err = spi.getStatus()
+	}
+	return err
 }
 
-func (spi *SPI3w) CmdRead(cmd uint32, r []uint32) error {
+func (spi *SPI3w) CmdRead(cmd uint32, r []uint32) (err error) {
 	const writeBits = 31
 	readBits := len(r)*32 + 32 - 1
-	spi.prepTx(uint32(readBits), uint32(writeBits))
+	spi.prepTx(uint32(readBits), writeBits)
 
 	spi.sm.TxPut(cmd)
-	if spi.dma.IsValid() {
-		return spi.readDMA(r)
+	err = spi.read(r)
+	if err != nil {
+		return err
 	}
-	return spi.read(r)
-}
-
-func (spi *SPI3w) prepTx(readbits, writebits uint32) {
-	spi.sm.SetEnabled(false)
-
-	spi.sm.ClearFIFOs()
-	spi.sm.SetX(readbits)
-	spi.sm.SetY(writebits)
-	spi.sm.Exec(pio.EncodeSet(pio.SrcDestPinDirs, 1)) // Set Pindir out.
-	spi.sm.Jmp(spi.offset+spi3wWrapTarget, pio.JmpAlways)
-
-	spi.sm.SetEnabled(true)
-}
-
-func (spi *SPI3w) EnableDMA(enabled bool) error {
-	if !enabled {
-		if spi.dma.IsValid() {
-			spi.dma.Unclaim()
-		}
-		return nil
+	if spi.enableStatus {
+		err = spi.getStatus()
 	}
-	channel, ok := _DMA.ClaimChannel()
-	if !ok {
-		return errDMAUnavail
-	}
-	spi.dma = channel
-	return nil
+	return err
 }
 
 func (spi *SPI3w) read(r []uint32) error {
+	if spi.IsDMAEnabled() {
+		return spi.readDMA(r)
+	}
 	i := 0
 	retries := timeoutRetries
 	for i < len(r) && retries > 0 {
@@ -133,13 +120,10 @@ func (spi *SPI3w) read(r []uint32) error {
 	return nil
 }
 
-func (spi *SPI3w) readDMA(r []uint32) error {
-	dreq := dmaPIO_RxDREQ(spi.sm)
-	spi.dma.Pull32(r, &spi.sm.RxReg().Reg, dreq)
-	return nil
-}
-
 func (spi *SPI3w) write(w []uint32) error {
+	if spi.IsDMAEnabled() {
+		return spi.writeDMA(w)
+	}
 	i := 0
 	retries := timeoutRetries
 	for i < len(w) && retries > 0 {
@@ -157,8 +141,69 @@ func (spi *SPI3w) write(w []uint32) error {
 	return nil
 }
 
+// LastStatus returns the latest status. This is only valid if EnableStatus(true) was called.
+func (spi *SPI3w) LastStatus() uint32 {
+	return spi.lastStatus
+}
+
+// EnableStatus enables the reading of the last status word after a CmdRead/CmdWrite.
+func (spi *SPI3w) EnableStatus(enabled bool) {
+	spi.enableStatus = enabled
+}
+
+func (spi *SPI3w) getStatus() error {
+	var buf [1]uint32
+	err := spi.read(buf[:1])
+	if err != nil {
+		return err
+	}
+	spi.lastStatus = buf[0]
+	return nil
+}
+
+func (spi *SPI3w) prepTx(readbits, writebits uint32) {
+	spi.sm.SetEnabled(false)
+
+	spi.sm.ClearFIFOs()
+	spi.sm.SetX(readbits)
+	spi.sm.SetY(writebits)
+	spi.sm.Exec(pio.EncodeSet(pio.SrcDestPinDirs, 1)) // Set Pindir out.
+	spi.sm.Jmp(spi.offset+spi3wWrapTarget, pio.JmpAlways)
+
+	spi.sm.SetEnabled(true)
+}
+
+// DMA code below.
+
+func (spi *SPI3w) EnableDMA(enabled bool) error {
+	dmaAlreadyEnabled := spi.IsDMAEnabled()
+	if !enabled || dmaAlreadyEnabled {
+		if !enabled && dmaAlreadyEnabled {
+			spi.dma.Unclaim()
+			spi.dma = dmaChannel{} // Invalidate DMA channel.
+		}
+		return nil
+	}
+	channel, ok := _DMA.ClaimChannel()
+	if !ok {
+		return errDMAUnavail
+	}
+	spi.dma = channel
+	return nil
+}
+
+func (spi *SPI3w) readDMA(r []uint32) error {
+	dreq := dmaPIO_RxDREQ(spi.sm)
+	spi.dma.Pull32(r, &spi.sm.RxReg().Reg, dreq)
+	return nil
+}
+
 func (spi *SPI3w) writeDMA(w []uint32) error {
 	dreq := dmaPIO_TxDREQ(spi.sm)
 	spi.dma.Push32(&spi.sm.TxReg().Reg, w, dreq)
 	return nil
+}
+
+func (spi *SPI3w) IsDMAEnabled() bool {
+	return spi.dma.IsValid()
 }
