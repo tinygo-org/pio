@@ -62,8 +62,36 @@ func NewSPI3(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, er
 
 func (spi *SPI3w) CmdRead(cmd uint32, r []uint32) error {
 	spi.sm.SetEnabled(false)
-	// writeBits := 31
-	// readBits := len(r)*32 + 32 - 1
+	const writeBits = 31
+	readBits := len(r)*32 + 32 - 1
 
+	spi.sm.SetX(uint32(readBits))
+	spi.sm.SetY(uint32(writeBits))
+	spi.sm.Exec(pio.EncodeSet(pio.SrcDestPinDirs, 1)) // Set Pindir out.
+	spi.sm.Jmp(spi.offset+spi3wWrapTarget, pio.JmpAlways)
+
+	spi.sm.SetEnabled(true)
+
+	spi.sm.TxPut(cmd)
+
+	return spi.read(r)
+}
+
+func (spi *SPI3w) read(r []uint32) error {
+	i := 0
+	retries := timeoutRetries
+	for i < len(r) && retries > 0 {
+		if spi.sm.IsRxFIFOEmpty() {
+			gosched()
+			retries--
+			continue
+		}
+		r[i] = spi.sm.RxGet()
+		spi.sm.TxPut(r[i])
+		i++
+	}
+	if retries <= 0 {
+		return errTimeout
+	}
 	return nil
 }

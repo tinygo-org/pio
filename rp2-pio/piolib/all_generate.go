@@ -5,6 +5,8 @@ import (
 	"runtime"
 )
 
+const timeoutRetries = 1023
+
 var (
 	errTimeout = errors.New("piolib:timeout")
 	errBusy    = errors.New("piolib:busy")
