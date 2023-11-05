@@ -16,6 +16,7 @@ skip:
 	jmp entry_point
 
 % go {
+//go:build rp2040
 package piolib
 
 import (

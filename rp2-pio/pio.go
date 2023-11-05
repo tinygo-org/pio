@@ -104,7 +104,7 @@ func (pio *PIO) AddProgramAtOffset(instructions []uint16, origin int8, offset ui
 		instr := instructions[i]
 
 		// Patch jump instructions with relative offset
-		if INSTR_BITS_JMP == instr&INSTR_BITS_Msk {
+		if _INSTR_BITS_JMP == instr&_INSTR_BITS_Msk {
 			pio.writeInstructionMemory(offset+i, instr+uint16(offset))
 		} else {
 			pio.writeInstructionMemory(offset+i, instr)

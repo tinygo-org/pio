@@ -5,23 +5,39 @@ import (
 	"math"
 )
 
-// This file contains the primitives for creating instructions dynamically
-const (
-	INSTR_BITS_JMP  = 0x0000
-	INSTR_BITS_WAIT = 0x2000
-	INSTR_BITS_IN   = 0x4000
-	INSTR_BITS_OUT  = 0x6000
-	INSTR_BITS_PUSH = 0x8000
-	INSTR_BITS_PULL = 0x8080
-	INSTR_BITS_MOV  = 0xa000
-	INSTR_BITS_IRQ  = 0xc000
-	INSTR_BITS_SET  = 0xe000
+// InstrKind is a enum for the PIO instruction type. It only represents the kind of
+// instruction. It cannot store the arguments.
+type InstrKind uint8
 
-	// Bit mask for instruction code
-	INSTR_BITS_Msk = 0xe000
+const (
+	InstrJMP InstrKind = iota
+	InstrWAIT
+	InstrIN
+	InstrOUT
+	InstrPUSH
+	InstrPULL
+	InstrMOV
+	InstrIRQ
+	InstrSET
 )
 
-type SrcDest uint16
+// This file contains the primitives for creating instructions dynamically
+const (
+	_INSTR_BITS_JMP  = 0x0000
+	_INSTR_BITS_WAIT = 0x2000
+	_INSTR_BITS_IN   = 0x4000
+	_INSTR_BITS_OUT  = 0x6000
+	_INSTR_BITS_PUSH = 0x8000
+	_INSTR_BITS_PULL = 0x8080
+	_INSTR_BITS_MOV  = 0xa000
+	_INSTR_BITS_IRQ  = 0xc000
+	_INSTR_BITS_SET  = 0xe000
+
+	// Bit mask for instruction code
+	_INSTR_BITS_Msk = 0xe000
+)
+
+type SrcDest uint8
 
 const (
 	SrcDestPins    SrcDest = 0
@@ -37,125 +53,122 @@ const (
 	SrcExecOut     SrcDest = 7
 )
 
-func MajorInstrBits(instr uint16) uint16 {
-	return instr & INSTR_BITS_Msk
+type JmpCond uint8
+
+const (
+	// No condition, always jumps.
+	JmpAlways JmpCond = iota
+	// Jump if X is zero.
+	JmpXZero
+	// Jump if X is not zero, prior to decrement of X.
+	JmpXNZeroDec
+	// Jump if Y is zero.
+	JmpYZero
+	// Jump if Y is not zero, prior to decrement of Y.
+	JmpYNZeroDec
+	// Jump if X is not equal to Y.
+	JmpXNotEqualY
+	// Jump if EXECCTRL_JMP_PIN (state machine configured) is high.
+	JmpPinInput
+	// Compares the bits shifted out since last pull with the shift count theshold
+	// (configured by SHIFTCTRL_PULL_THRESH) and jumps if there are remaining bits to shift.
+	JmpOSRNotEmpty
+)
+
+// EncodeInstr encodes an arbitrary PIO instruction with the given arguments.
+func EncodeInstr(instr InstrKind, delaySideset, arg1_3b, arg2_5b uint8) uint16 {
+	return uint16(instr&0b111)<<13 | uint16(delaySideset&0x1f)<<8 | uint16(arg1_3b&0b111)<<5 | uint16(arg2_5b&0x1f)
 }
 
-func EncodeInstrAndArgs(instr uint16, arg1 uint16, arg2 uint16) uint16 {
-	return instr | (arg1 << 5) | (arg2 & 0x1f)
+func majorInstrBits(instr uint16) uint16 {
+	return instr & _INSTR_BITS_Msk
 }
 
-func EncodeInstrAndSrcDest(instr uint16, dest SrcDest, value uint16) uint16 {
-	return EncodeInstrAndArgs(instr, uint16(dest)&7, value)
+func encodeInstrAndArgs(instr uint16, arg1 uint8, arg2 uint8) uint16 {
+	return instr | (uint16(arg1) << 5) | uint16(arg2&0x1f)
 }
 
-func EncodeDelay(cycles uint16) uint16 {
-	return cycles << 8
+func encodeInstrAndSrcDest(instr uint16, dest SrcDest, value uint8) uint16 {
+	return encodeInstrAndArgs(instr, uint8(dest)&7, value)
 }
 
-func EncodeSideSet(bitCount uint16, value uint16) uint16 {
-	return value << (13 - bitCount)
+func EncodeDelay(cycles uint8) uint16 {
+	return 0b11111 & (uint16(cycles) << 8)
 }
 
-func EncodeSetSetOpt(bitCount uint16, value uint16) uint16 {
-	return 0x1000 | value<<(12-bitCount)
+func EncodeSideSet(bitCount, value uint8) uint16 {
+	return uint16(value) << (13 - bitCount)
 }
 
-func EncodeJmp(addr uint16) uint16 {
-	return EncodeInstrAndArgs(INSTR_BITS_JMP, 0, addr)
+func EncodeSetSetOpt(bitCount uint8, value uint8) uint16 {
+	return 0x1000 | uint16(value)<<(12-bitCount)
 }
 
-func EncodeIRQ(relative bool, irq uint16) uint16 {
-	instr := irq
-
-	if relative {
-		instr |= 0x10
-	}
-
-	return instr
+func EncodeJmp(addr uint8, condition JmpCond) uint16 {
+	return encodeInstrAndArgs(_INSTR_BITS_JMP, uint8(condition&0b111), addr)
 }
 
-func EncodeWaitGPIO(polarity bool, pin uint16) uint16 {
-	flag := uint16(0)
-	if polarity {
-		flag = 0x4
-	}
-
-	return EncodeInstrAndArgs(INSTR_BITS_WAIT, 0|flag, pin)
+func encodeIRQ(relative bool, irq uint8) uint8 {
+	return boolAsU8(relative) << 4
 }
 
-func EncodeWaitPin(polarity bool, pin uint16) uint16 {
-	flag := uint16(0)
-	if polarity {
-		flag = 0x4
-	}
-
-	return EncodeInstrAndArgs(INSTR_BITS_WAIT, 1|flag, pin)
+func EncodeWaitGPIO(polarity bool, pin uint8) uint16 {
+	flag := boolAsU8(polarity) << 2
+	return encodeInstrAndArgs(_INSTR_BITS_WAIT, 0|flag, pin)
 }
 
-func EncodeWaitIRQ(polarity bool, relative bool, irq uint16) uint16 {
-	flag := uint16(0)
-	if polarity {
-		flag = 0x4
-	}
+func EncodeWaitPin(polarity bool, pin uint8) uint16 {
+	flag := boolAsU8(polarity) << 2
 
-	return EncodeInstrAndArgs(INSTR_BITS_WAIT, 2|flag, EncodeIRQ(relative, irq))
+	return encodeInstrAndArgs(_INSTR_BITS_WAIT, 1|flag, pin)
 }
 
-func EncodeIn(src SrcDest, value uint16) uint16 {
-	return EncodeInstrAndSrcDest(INSTR_BITS_IN, src, value)
+func EncodeWaitIRQ(polarity bool, relative bool, irq uint8) uint16 {
+	flag := boolAsU8(polarity) << 2
+
+	return encodeInstrAndArgs(_INSTR_BITS_WAIT, 2|flag, encodeIRQ(relative, irq))
 }
 
-func EncodeOut(dest SrcDest, value uint16) uint16 {
-	return EncodeInstrAndSrcDest(INSTR_BITS_OUT, dest, value)
+func EncodeIn(src SrcDest, value uint8) uint16 {
+	return encodeInstrAndSrcDest(_INSTR_BITS_IN, src, value)
+}
+
+func EncodeOut(dest SrcDest, value uint8) uint16 {
+	return encodeInstrAndSrcDest(_INSTR_BITS_OUT, dest, value)
 }
 
 func EncodePush(ifFull bool, block bool) uint16 {
-	arg := uint16(0)
-	if ifFull {
-		arg |= 2
-	}
-	if block {
-		arg |= 1
-	}
-
-	return EncodeInstrAndArgs(INSTR_BITS_PUSH, arg, 0)
+	arg := boolAsU8(ifFull)<<1 | boolAsU8(block)
+	return encodeInstrAndArgs(_INSTR_BITS_PUSH, arg, 0)
 }
 
 func EncodePull(ifEmpty bool, block bool) uint16 {
-	arg := uint16(0)
-	if ifEmpty {
-		arg |= 2
-	}
-	if block {
-		arg |= 1
-	}
-
-	return EncodeInstrAndArgs(INSTR_BITS_PULL, arg, 0)
+	arg := boolAsU8(ifEmpty)<<1 | boolAsU8(block)
+	return encodeInstrAndArgs(_INSTR_BITS_PULL, arg, 0)
 }
 
 func EncodeMov(dest SrcDest, src SrcDest) uint16 {
-	return EncodeInstrAndSrcDest(INSTR_BITS_MOV, dest, uint16(src)&7)
+	return encodeInstrAndSrcDest(_INSTR_BITS_MOV, dest, uint8(src)&7)
 }
 
 func EncodeMovNot(dest SrcDest, src SrcDest) uint16 {
-	return EncodeInstrAndSrcDest(INSTR_BITS_MOV, dest, (1<<3)|(uint16(src)&7))
+	return encodeInstrAndSrcDest(_INSTR_BITS_MOV, dest, (1<<3)|(uint8(src)&7))
 }
 
 func EncodeMovReverse(dest SrcDest, src SrcDest) uint16 {
-	return EncodeInstrAndSrcDest(INSTR_BITS_MOV, dest, (2<<3)|(uint16(src)&7))
+	return encodeInstrAndSrcDest(_INSTR_BITS_MOV, dest, (2<<3)|(uint8(src)&7))
 }
 
-func EncodeIRQSet(relative bool, irq uint16) uint16 {
-	return EncodeInstrAndArgs(INSTR_BITS_IRQ, 0, EncodeIRQ(relative, irq))
+func EncodeIRQSet(relative bool, irq uint8) uint16 {
+	return encodeInstrAndArgs(_INSTR_BITS_IRQ, 0, encodeIRQ(relative, irq))
 }
 
-func EncodeIRQClear(relative bool, irq uint16) uint16 {
-	return EncodeInstrAndArgs(INSTR_BITS_IRQ, 2, EncodeIRQ(relative, irq))
+func EncodeIRQClear(relative bool, irq uint8) uint16 {
+	return encodeInstrAndArgs(_INSTR_BITS_IRQ, 2, encodeIRQ(relative, irq))
 }
 
-func EncodeSet(dest SrcDest, value uint16) uint16 {
-	return EncodeInstrAndSrcDest(INSTR_BITS_SET, dest, value)
+func EncodeSet(dest SrcDest, value uint8) uint16 {
+	return encodeInstrAndSrcDest(_INSTR_BITS_SET, dest, value)
 }
 
 func EncodeNOP() uint16 {
@@ -195,4 +208,11 @@ func splitClkdiv(clkdiv uint64) (whole uint16, frac uint8, err error) {
 	whole = uint16(clkdiv / 256)
 	frac = uint8(clkdiv % 256)
 	return whole, frac, nil
+}
+
+func boolAsU8(b bool) uint8 {
+	if b {
+		return 1
+	}
+	return 0
 }

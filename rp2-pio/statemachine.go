@@ -83,12 +83,17 @@ func (sm StateMachine) Init(initialPC uint8, cfg StateMachineConfig) {
 
 	sm.Restart()
 	sm.ClkDivRestart()
-	sm.Exec(EncodeJmp(uint16(initialPC)))
+	sm.Exec(EncodeJmp(initialPC, JmpAlways))
 }
 
-// SetEnabled controls whether the state machine is running
+// SetEnabled controls whether the state machine is running.
 func (sm StateMachine) SetEnabled(enabled bool) {
 	sm.pio.hw.CTRL.ReplaceBits(boolToBit(enabled), 0x1, sm.index)
+}
+
+// IsEnabled returns true if the state machine is running.
+func (sm StateMachine) IsEnabled() bool {
+	return sm.pio.hw.CTRL.HasBits(1 << (rp.PIO0_CTRL_SM_ENABLE_Pos + sm.index))
 }
 
 // Restart restarts the state machine
@@ -253,7 +258,7 @@ func (sm StateMachine) setPinExec(dest SrcDest, valueMask, pinMask uint32) {
 				1<<rp.PIO0_SM0_PINCTRL_SET_COUNT_Pos |
 					uint32(i)<<rp.PIO0_SM0_PINCTRL_SET_BASE_Pos,
 			)
-			value := 0x1 & uint16(valueMask>>i)
+			value := 0x1 & uint8(valueMask>>i)
 			sm.Exec(EncodeSet(dest, value))
 		}
 	} else {
@@ -266,7 +271,7 @@ func (sm StateMachine) setPinExec(dest SrcDest, valueMask, pinMask uint32) {
 					base<<rp.PIO0_SM0_PINCTRL_SET_BASE_Pos,
 			)
 
-			value := 0x1 & uint16(valueMask>>base)
+			value := 0x1 & uint8(valueMask>>base)
 			sm.Exec(EncodeSet(dest, value))
 			pinMask &= pinMask - 1
 		}
@@ -287,6 +292,46 @@ func (sm StateMachine) SetWrap(target, wrap uint8) {
 		rp.PIO0_SM0_EXECCTRL_WRAP_TOP_Msk|rp.PIO0_SM0_EXECCTRL_WRAP_BOTTOM_Msk,
 		0,
 	)
+}
+
+// SetX sets the X register of a state machine. The state machine should be halted beforehand.
+func (sm StateMachine) SetX(value uint32) {
+	sm.setDst(SrcDestX, value)
+}
+
+// SetY sets the Y register of a state machine. The state machine should be halted beforehand.
+func (sm StateMachine) SetY(value uint32) {
+	sm.setDst(SrcDestY, value)
+}
+
+// GetX gets the X register of a state machine. The state machine should be halted beforehand.
+func (sm StateMachine) GetX() uint32 {
+	return sm.getDst(SrcDestX)
+}
+
+// GetY gets the Y register of a state machine. The state machine should be halted beforehand.
+func (sm StateMachine) GetY() uint32 {
+	return sm.getDst(SrcDestY)
+}
+
+func (sm StateMachine) setDst(dst SrcDest, value uint32) {
+	const bitCount = 32
+	instr := EncodeOut(dst, bitCount)
+	sm.TxPut(value)
+	sm.Exec(instr)
+}
+
+func (sm StateMachine) getDst(dst SrcDest) uint32 {
+	const bitCount = 32
+	instr := EncodeIn(dst, bitCount)
+	sm.Exec(instr)
+	return sm.RxGet()
+}
+
+// Jmp sets the program counter of a state machine to a PIO program address given a condition.
+// The state machine should be halted beforehand.
+func (sm StateMachine) Jmp(toAddr uint8, cond JmpCond) {
+	sm.Exec(EncodeJmp(toAddr, cond))
 }
 
 const (
