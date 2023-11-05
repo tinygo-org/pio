@@ -16,6 +16,7 @@ type SPI struct {
 }
 
 func NewSPI(sm pio.StateMachine, spicfg machine.SPIConfig) (*SPI, error) {
+	sm.Claim() // SM should be claimed beforehand, we just guarantee it's claimed.
 	const nbits = 8
 	// https://github.com/raspberrypi/pico-examples/blob/eca13acf57916a0bd5961028314006983894fc84/pio/spi/spi.pio#L46
 	if !sm.IsValid() {
