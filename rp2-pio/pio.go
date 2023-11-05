@@ -27,8 +27,11 @@ var (
 	errStateMachineClaimed = errors.New("pio: state machine already claimed")
 )
 
-const badStateMachineIndex = "invalid state machine index"
-const badPIO = "invalid PIO"
+const (
+	badStateMachineIndex = "invalid state machine index"
+	badPIO               = "invalid PIO"
+	badProgramBounds     = "invalid program bounds"
+)
 
 // PIO represents one of the two PIO peripherals in the RP2040
 type PIO struct {
@@ -163,6 +166,21 @@ func (pio *PIO) findOffsetForProgram(instructions []uint16, origin int8) int8 {
 	}
 
 	return -1
+}
+
+// ClearProgramSection clears a contiguous section of the PIO's program memory.
+// To clear all program memory use ClearProgramSection(0, 32).
+func (pio *PIO) ClearProgramSection(offset, len uint8) {
+	if offset+len > 32 { // 32 instructions max
+		panic(badProgramBounds)
+	}
+	hw := pio.HW()
+	for i := offset; i < offset+len; i++ {
+		// We encode trap instructions to prevent undefined behaviour if
+		// a state machine is currently using the program memory.
+		hw.INSTR_MEM[i].Set(uint32(encodeTRAP(offset)))
+	}
+	pio.usedSpaceMask &^= uint32((1<<len)-1) << offset
 }
 
 type statemachineHW struct {

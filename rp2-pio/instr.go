@@ -175,6 +175,11 @@ func EncodeNOP() uint16 {
 	return EncodeMov(SrcDestY, SrcDestY)
 }
 
+// encodeTRAP encodes a trap instruction. It must be stored at the argument offset.
+func encodeTRAP(trapOffset uint8) uint16 {
+	return EncodeJmp(trapOffset, JmpAlways)
+}
+
 // ClkDivFromPeriod calculates the CLKDIV register values
 // to reach a given StateMachine cycle period given the RP2040 CPU frequency.
 // period is expected to be in nanoseconds. freq is expected to be in Hz.

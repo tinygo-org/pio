@@ -10,6 +10,8 @@ const timeoutRetries = 1023
 var (
 	errTimeout = errors.New("piolib:timeout")
 	errBusy    = errors.New("piolib:busy")
+
+	errDMAUnavail = errors.New("piolib:DMA channel unavailable")
 )
 
 //go:generate pioasm -o go parallel8.pio  parallel8_pio.go

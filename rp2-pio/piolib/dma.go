@@ -6,11 +6,89 @@ import (
 	"device/rp"
 	"runtime/volatile"
 	"unsafe"
+
+	pio "github.com/tinygo-org/pio/rp2-pio"
 )
 
+var _DMA = &dmaArbiter{}
+
+type dmaArbiter struct {
+	claimedChannels uint16
+}
+
+// ClaimChannel returns a DMA channel that can be used for DMA transfers.
+func (arb *dmaArbiter) ClaimChannel() (channel dmaChannel, ok bool) {
+	for i := uint8(0); i < 12; i++ {
+		ch := arb.Channel(i)
+		if ch.Claim() {
+			return ch, true
+		}
+	}
+	return dmaChannel{}, false
+}
+
+func (arb *dmaArbiter) Channel(channel uint8) dmaChannel {
+	if channel > 11 {
+		panic("invalid DMA channel")
+	}
+	// DMA channels usable on the RP2040. 12 in total.
+	var dmaChannels = (*[12]dmaChannelHW)(unsafe.Pointer(rp.DMA))
+	return dmaChannel{
+		hw:  &dmaChannels[channel],
+		arb: arb,
+		idx: channel,
+	}
+}
+
 type dmaChannel struct {
-	hw      *dmaChannelHW
-	channel uint8
+	hw  *dmaChannelHW
+	arb *dmaArbiter
+	idx uint8
+}
+
+// Claim claims the DMA channel for use by a peripheral and returns if it succeeded in claiming the channel.
+func (ch dmaChannel) Claim() bool {
+	ch.mustValid()
+	if ch.IsClaimed() {
+		return false
+	}
+	ch.arb.claimedChannels |= 1 << ch.idx
+	return true
+}
+
+// Unclaim releases the DMA channel so it can be used by other peripherals.
+// It does not check if the channel is currently claimed; it force-unclaims the channel.
+func (ch dmaChannel) Unclaim() {
+	ch.mustValid()
+	ch.arb.claimedChannels &^= 1 << ch.idx
+}
+
+// IsClaimed returns true if the DMA channel is currently claimed through software.
+func (ch dmaChannel) IsClaimed() bool {
+	ch.mustValid()
+	return ch.arb.claimedChannels&(1<<ch.idx) != 0
+}
+
+// IsValid returns true if the DMA channel was created successfully.
+func (ch dmaChannel) IsValid() bool {
+	return ch.hw != nil && ch.arb == _DMA
+}
+
+// ChannelIndex returns the channel number of the DMA channel. In range 0..11.
+func (ch dmaChannel) ChannelIndex() uint8 { return ch.idx }
+
+// HW returns the hardware registers for this DMA channel.
+func (ch dmaChannel) HW() *dmaChannelHW { return ch.hw }
+
+func (ch dmaChannel) Init(cfg dmaChannelConfig) {
+	ch.mustValid()
+	ch.HW().CTRL_TRIG.Set(cfg.CTRL)
+}
+
+func (ch dmaChannel) mustValid() {
+	if !ch.IsValid() {
+		panic("use of uninitialized DMA channel")
+	}
 }
 
 // Single DMA channel. See rp.DMA_Type.
@@ -30,13 +108,17 @@ const (
 	spi1DMAChannel
 )
 
-// DMA channels usable on the RP2040.
-var dmaChannels = (*[12]dmaChannelHW)(unsafe.Pointer(rp.DMA))
-
-func getDMAChannel(channel uint8) *dmaChannel {
-	return &dmaChannel{hw: &dmaChannels[channel], channel: channel}
+// dmaPIO_TREQ returns the Tx DREQ signal for a PIO state machine.
+func dmaPIO_TxDREQ(sm pio.StateMachine) uint32 {
+	return _DREQ_PIO0_TX0 + uint32(sm.PIO().BlockIndex())*8 + uint32(sm.StateMachineIndex())
 }
 
+// dmaPIO_TREQ returns the Rx DREQ signal for a PIO state machine.
+func dmaPIO_RxDREQ(sm pio.StateMachine) uint32 {
+	return dmaPIO_TxDREQ(sm) + 4
+}
+
+// 2.5.3.1. System DREQ Table. Note: Another caveat is that multiple channels should not be connected to the same DREQ.
 const (
 	_DREQ_PIO0_TX0   = 0x0
 	_DREQ_PIO0_TX1   = 0x1
@@ -80,37 +162,9 @@ const (
 	_DREQ_XIP_SSIRX  = 0x27
 )
 
-type dmaTxSize uint32
-
-const (
-	dmaTxSize8 dmaTxSize = iota
-	dmaTxSize16
-	dmaTxSize32
-)
-
-type dmaChannelConfig struct {
-	CTRL uint32
-}
-
-func getDefaultDMAConfig(channel uint32) (cc dmaChannelConfig) {
-	cc.setRing(false, 0)
-	cc.setBSwap(false)
-	cc.setIRQQuiet(false)
-	cc.setWriteIncrement(false)
-	cc.setSniffEnable(false)
-	cc.setHighPriority(false)
-
-	cc.setChainTo(channel)
-	cc.setTREQ_SEL(rp.DMA_CH0_CTRL_TRIG_TREQ_SEL_PERMANENT)
-	cc.setReadIncrement(true)
-	cc.setTransferDataSize(dmaTxSize32)
-	cc.setEnable(true)
-	return cc
-}
-
-// push32 writes each element of src slice into the memory location at dst.
-func (ch *dmaChannel) push32(dst *uint32, src []uint32, dreq uint32) {
-	hw := ch.hw
+// Push32 writes each element of src slice into the memory location at dst.
+func (ch dmaChannel) Push32(dst *uint32, src []uint32, dreq uint32) {
+	hw := ch.HW()
 	srcPtr := uint32(uintptr(unsafe.Pointer(&src[0])))
 	dstPtr := uint32(uintptr(unsafe.Pointer(dst)))
 	hw.READ_ADDR.Set(srcPtr)
@@ -121,7 +175,7 @@ func (ch *dmaChannel) push32(dst *uint32, src []uint32, dreq uint32) {
 	cc.CTRL = hw.CTRL_TRIG.Get()
 	cc.setTREQ_SEL(dreq)
 	cc.setTransferDataSize(dmaTxSize32)
-	cc.setChainTo(uint32(ch.channel))
+	cc.setChainTo(ch.idx)
 	cc.setReadIncrement(true)
 	cc.setWriteIncrement(false)
 	cc.setEnable(true)
@@ -138,9 +192,9 @@ func (ch *dmaChannel) push32(dst *uint32, src []uint32, dreq uint32) {
 	}
 }
 
-// pull32 reads the memory location at src into dst slice, incrementing dst pointer but not src.
-func (ch *dmaChannel) pull32(dst []uint32, src *uint32, dreq uint32) {
-	hw := ch.hw
+// Pull32 reads the memory location at src into dst slice, incrementing dst pointer but not src.
+func (ch dmaChannel) Pull32(dst []uint32, src *uint32, dreq uint32) {
+	hw := ch.HW()
 	srcPtr := uint32(uintptr(unsafe.Pointer(src)))
 	dstPtr := uint32(uintptr(unsafe.Pointer(&dst[0])))
 	hw.READ_ADDR.Set(srcPtr)
@@ -151,7 +205,7 @@ func (ch *dmaChannel) pull32(dst []uint32, src *uint32, dreq uint32) {
 	cc.CTRL = hw.CTRL_TRIG.Get()
 	cc.setTREQ_SEL(dreq)
 	cc.setTransferDataSize(dmaTxSize32)
-	cc.setChainTo(uint32(ch.channel))
+	cc.setChainTo(ch.idx)
 	cc.setReadIncrement(false)
 	cc.setWriteIncrement(true)
 	cc.setEnable(true)
@@ -171,13 +225,13 @@ func (ch *dmaChannel) pull32(dst []uint32, src *uint32, dreq uint32) {
 // abort aborts the current transfer sequence on the channel and blocks until
 // all in-flight transfers have been flushed through the address and data FIFOs.
 // After this, it is safe to restart the channel.
-func (ch *dmaChannel) abort() {
+func (ch dmaChannel) abort() {
 	// Each bit corresponds to a channel. Writing a 1 aborts whatever transfer
 	// sequence is in progress on that channel. The bit will remain high until
 	// any in-flight transfers have been flushed through the address and data FIFOs.
 	// After writing, this register must be polled until it returns all-zero.
 	// Until this point, it is unsafe to restart the channel.
-	chMask := uint32(1 << ch.channel)
+	chMask := uint32(1 << ch.idx)
 	rp.DMA.CHAN_ABORT.Set(chMask)
 	retries := timeoutRetries
 	for rp.DMA.CHAN_ABORT.Get()&chMask != 0 && retries > 0 {
@@ -189,8 +243,37 @@ func (ch *dmaChannel) abort() {
 	}
 }
 
-func (ch *dmaChannel) busy() bool {
-	return ch.hw.CTRL_TRIG.Get()&rp.DMA_CH0_CTRL_TRIG_BUSY != 0
+func (ch dmaChannel) busy() bool {
+	hw := ch.HW()
+	return hw.CTRL_TRIG.Get()&rp.DMA_CH0_CTRL_TRIG_BUSY != 0
+}
+
+type dmaTxSize uint32
+
+const (
+	dmaTxSize8 dmaTxSize = iota
+	dmaTxSize16
+	dmaTxSize32
+)
+
+type dmaChannelConfig struct {
+	CTRL uint32
+}
+
+func dmaDefaultConfig(channel uint8) (cc dmaChannelConfig) {
+	cc.setRing(false, 0)
+	cc.setBSwap(false)
+	cc.setIRQQuiet(false)
+	cc.setWriteIncrement(false)
+	cc.setSniffEnable(false)
+	cc.setHighPriority(false)
+
+	cc.setChainTo(channel)
+	cc.setTREQ_SEL(rp.DMA_CH0_CTRL_TRIG_TREQ_SEL_PERMANENT)
+	cc.setReadIncrement(true)
+	cc.setTransferDataSize(dmaTxSize32)
+	// cc.setEnable(true)
+	return cc
 }
 
 // Select a Transfer Request signal. The channel uses the transfer request signal
@@ -200,8 +283,8 @@ func (cc *dmaChannelConfig) setTREQ_SEL(dreq uint32) {
 	cc.CTRL = (cc.CTRL & ^uint32(rp.DMA_CH0_CTRL_TRIG_TREQ_SEL_Msk)) | (uint32(dreq) << rp.DMA_CH0_CTRL_TRIG_TREQ_SEL_Pos)
 }
 
-func (cc *dmaChannelConfig) setChainTo(chainTo uint32) {
-	cc.CTRL = (cc.CTRL & ^uint32(rp.DMA_CH0_CTRL_TRIG_CHAIN_TO_Msk)) | (chainTo << rp.DMA_CH0_CTRL_TRIG_CHAIN_TO_Pos)
+func (cc *dmaChannelConfig) setChainTo(chainTo uint8) {
+	cc.CTRL = (cc.CTRL & ^uint32(rp.DMA_CH0_CTRL_TRIG_CHAIN_TO_Msk)) | (uint32(chainTo) << rp.DMA_CH0_CTRL_TRIG_CHAIN_TO_Pos)
 }
 
 func (cc *dmaChannelConfig) setTransferDataSize(size dmaTxSize) {
@@ -256,4 +339,8 @@ func setBitPos(cc *uint32, pos uint32, bit bool) {
 	} else {
 		*cc = *cc & ^(1 << pos) // unset bit.
 	}
+}
+
+func ptrAs[T ~uint32](ptr *T) uint32 {
+	return uint32(uintptr(unsafe.Pointer(ptr)))
 }
