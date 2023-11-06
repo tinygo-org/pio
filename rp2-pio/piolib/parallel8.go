@@ -5,15 +5,16 @@ package piolib
 import (
 	"errors"
 	"machine"
+	"unsafe"
 
 	pio "github.com/tinygo-org/pio/rp2-pio"
 )
 
 // Parallel8Tx is a 8-wire, only send Parallel implementation.
 type Parallel8Tx struct {
-	sm         pio.StateMachine
-	offset     uint8
-	dmaChannel uint32
+	sm     pio.StateMachine
+	offset uint8
+	dma    dmaChannel
 }
 
 // unused for now.
@@ -57,13 +58,12 @@ func NewParallel8Tx(sm pio.StateMachine, wr, dStart machine.Pin, baud uint32) (*
 	sm.Init(offset, cfg)
 	sm.SetEnabled(true)
 
-	return &Parallel8Tx{sm: sm, dmaChannel: noDMA, offset: offset}, nil
+	return &Parallel8Tx{sm: sm, offset: offset}, nil
 }
 
 func (pl *Parallel8Tx) Write(data []uint8) error {
-	if pl.dmaChannel != noDMA {
-		// pl.dmaWrite(data)
-		return nil
+	if pl.IsDMAEnabled() {
+		return pl.dmaWrite(data)
 	}
 	retries := int8(127)
 	for _, char := range data {
@@ -79,54 +79,48 @@ func (pl *Parallel8Tx) Write(data []uint8) error {
 	return nil
 }
 
-/*
-func (pl *Parallel8Tx) EnableDMA(dmaChan uint32) error {
+func (pl *Parallel8Tx) IsDMAEnabled() bool {
+	return pl.dma.IsValid()
+}
+
+func (pl *Parallel8Tx) EnableDMA(enabled bool) error {
 	if !pl.sm.IsValid() {
 		return errors.New("PIO Statemachine needs initializing") //Not initialized
 	}
-	pl.dmaChannel = dmaChan // DMA enabled
-	if dmaChan == noDMA {
+	dmaAlreadyEnabled := pl.IsDMAEnabled()
+	if !enabled || dmaAlreadyEnabled {
+		if !enabled && dmaAlreadyEnabled {
+			pl.dma.Unclaim()
+			pl.dma = dmaChannel{} // Invalidate DMA channel.
+		}
 		return nil
 	}
-	Pio := pl.sm.PIO()
-	dmaConfig := getDefaultDMAConfig(dmaChan)
-	setTransferDataSize(dmaConfig, DMA_SIZE_8)
-	setBSwap(dmaConfig, false)
-	setDREQ(dmaConfig, uint32(Pio.GetIRQ()))
-	dmaChannelConfigure(dmaChan, dmaConfig, pl.sm.TxReg(), nil, 0, false)
+
+	channel, ok := _DMA.ClaimChannel()
+	if !ok {
+		return errDMAUnavail
+	}
+
+	channel.dl = pl.dma.dl // Copy deadline.
+	pl.dma = channel
+	cc := pl.dma.CurrentConfig()
+	cc.setBSwap(false)
+	cc.setTransferDataSize(dmaTxSize8)
+	pl.dma.Init(cc)
 	return nil
 }
 
-func (pl *Parallel8Tx) dmaWrite(data []byte) {
-	dmaChan := &dmaChannels[pl.dmaChannel]
-	for dmaChan.CTRL_TRIG.Get()&rp.DMA_CH0_CTRL_TRIG_BUSY != 0 {
-		runtime.Gosched()
+func (pl *Parallel8Tx) dmaWrite(data []byte) error {
+	dreq := dmaPIO_TxDREQ(pl.sm)
+	err := pl.dma.Push8((*byte)(unsafe.Pointer(&pl.sm.TxReg().Reg)), data, dreq)
+	if err != nil {
+		return err
 	}
 
-	readAddr := uint32(uintptr(unsafe.Pointer(&data[0])))
-	dmaChan.TRANS_COUNT.Set(uint32(len(data)))
-	dmaChan.READ_ADDR.Set(uint32(readAddr))
-	dmaChan.CTRL_TRIG.Set(dmaChan.CTRL_TRIG.Get() | rp.DMA_CH0_CTRL_TRIG_EN)
-
-	for dmaChan.CTRL_TRIG.Get()&rp.DMA_CH0_CTRL_TRIG_BUSY != 0 {
-		runtime.Gosched()
-	}
+	// DMA is done after this point but we still have to wait for
+	// the FIFO to be empty
 	for !pl.sm.IsTxFIFOEmpty() {
-		runtime.Gosched()
+		gosched()
 	}
+	return nil
 }
-
-func dmaChannelConfigure(channel, config uint32, writeAddr, readAddr *volatile.Register32, transferCount uint32, trigger bool) {
-	regAddr := func(reg *volatile.Register32) uint32 {
-		if reg == nil {
-			return 0
-		}
-		return uint32(uintptr(unsafe.Pointer(reg)))
-	}
-	dmaChan := dmaChannels[channel]
-	dmaChan.READ_ADDR.Set(regAddr(readAddr))
-	dmaChan.WRITE_ADDR.Set(regAddr(writeAddr))
-	dmaChan.TRANS_COUNT.Set(transferCount)
-	dmaChan.CTRL_TRIG.Set(config | rp.DMA_CH0_CTRL_TRIG_EN)
-}
-*/

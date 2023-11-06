@@ -16,9 +16,9 @@ type SPI3w struct {
 	dma    dmaChannel
 	offset uint8
 
-	enableStatus bool
-	lastStatus   uint32
-	pinMask      uint32
+	statusEn   bool
+	lastStatus uint32
+	pinMask    uint32
 }
 
 func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, error) {
@@ -61,55 +61,70 @@ func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, e
 	sm.SetEnabled(true)
 
 	spiw := &SPI3w{
-		sm:      sm,
-		offset:  offset,
-		pinMask: pinMask,
+		sm:       sm,
+		offset:   offset,
+		pinMask:  pinMask,
+		statusEn: true,
 	}
 	return spiw, nil
 }
 
 func (spi SPI3w) CmdWrite(cmd uint32, w []uint32) (err error) {
-	writeBits := len(w)*32 - 1
-	const readBits = 31
+	writeBits := (1+len(w))*32 - 1
+	var readBits uint32
+	if spi.statusEn {
+		readBits = 31
+	}
 
 	spi.prepTx(readBits, uint32(writeBits))
-
+	deadline := spi.newDeadline()
 	spi.sm.TxPut(cmd)
-	err = spi.write(w)
+	err = spi.write(w, deadline)
 	if err != nil {
 		return err
 	}
-	if spi.enableStatus {
-		err = spi.getStatus()
+	// DMA/TxPush is done after this point but we still have to wait for
+	// the FIFO to be empty.
+	for !spi.sm.IsTxFIFOEmpty() {
+		if deadline.expired() {
+			return errTimeout
+		}
+		gosched()
+	}
+	if spi.statusEn {
+		err = spi.getStatus(deadline)
 	}
 	return err
 }
 
 func (spi *SPI3w) CmdRead(cmd uint32, r []uint32) (err error) {
 	const writeBits = 31
-	readBits := len(r)*32 + 32 - 1
-	spi.prepTx(uint32(readBits), writeBits)
+	readBits := len(r)*32 - 1
+	if spi.statusEn {
+		readBits += 32
+	}
 
+	spi.prepTx(uint32(readBits), writeBits)
+	deadline := spi.newDeadline()
 	spi.sm.TxPut(cmd)
-	err = spi.read(r)
+	err = spi.read(r, deadline)
 	if err != nil {
 		return err
 	}
-	if spi.enableStatus {
-		err = spi.getStatus()
+	if spi.statusEn {
+		err = spi.getStatus(deadline)
 	}
 	return err
 }
 
-func (spi *SPI3w) read(r []uint32) error {
+func (spi *SPI3w) read(r []uint32, dl deadline) error {
 	if spi.IsDMAEnabled() {
 		return spi.readDMA(r)
 	}
 	i := 0
-	deadline := spi.newDeadline()
 	for i < len(r) {
 		if spi.sm.IsRxFIFOEmpty() {
-			if deadline.expired() {
+			if dl.expired() {
 				return errTimeout
 			}
 			gosched()
@@ -123,16 +138,15 @@ func (spi *SPI3w) read(r []uint32) error {
 	return nil
 }
 
-func (spi *SPI3w) write(w []uint32) error {
+func (spi *SPI3w) write(w []uint32, dl deadline) error {
 	if spi.IsDMAEnabled() {
 		return spi.writeDMA(w)
 	}
 
 	i := 0
-	deadline := spi.newDeadline()
 	for i < len(w) {
 		if spi.sm.IsTxFIFOFull() {
-			if deadline.expired() {
+			if dl.expired() {
 				return errTimeout
 			}
 			gosched()
@@ -140,12 +154,6 @@ func (spi *SPI3w) write(w []uint32) error {
 		}
 		spi.sm.TxPut(w[i])
 		i++
-	}
-	for !spi.sm.IsTxFIFOEmpty() {
-		if deadline.expired() {
-			return errTimeout
-		}
-		gosched()
 	}
 	return nil
 }
@@ -155,9 +163,9 @@ func (spi *SPI3w) LastStatus() uint32 {
 	return spi.lastStatus
 }
 
-// EnableStatus enables the reading of the last status word after a CmdRead/CmdWrite.
-func (spi *SPI3w) EnableStatus(enabled bool) {
-	spi.enableStatus = enabled
+// enableStatus enables the reading of the last status word after a CmdRead/CmdWrite.
+func (spi *SPI3w) enableStatus(enabled bool) {
+	spi.statusEn = enabled
 }
 
 // SetTimeout sets the read/write timeout. Use 0 as argument to disable timeouts.
@@ -169,9 +177,15 @@ func (spi *SPI3w) newDeadline() deadline {
 	return spi.dma.dl.newDeadline()
 }
 
-func (spi *SPI3w) getStatus() error {
+func (spi *SPI3w) getStatus(dl deadline) error {
+	for spi.sm.IsRxFIFOEmpty() {
+		if dl.expired() {
+			return errTimeout
+		}
+		gosched()
+	}
 	var buf [1]uint32
-	err := spi.read(buf[:1])
+	err := spi.read(buf[:1], dl)
 	if err != nil {
 		return err
 	}
@@ -179,12 +193,14 @@ func (spi *SPI3w) getStatus() error {
 	return nil
 }
 
-func (spi *SPI3w) forcePinsLow() { spi.sm.SetPinsMasked(0, spi.pinMask) }
-
 func (spi *SPI3w) prepTx(readbits, writebits uint32) {
 	spi.sm.SetEnabled(false)
+	// Clearing the FIFO will prevent remaining data from leaving
+	// a HIGH on the data pin apparently.
+	spi.sm.ClearFIFOs()
+	// The state machine must be restarted to prevent glitchiness.
+	spi.sm.Restart()
 
-	// spi.sm.ClearFIFOs()
 	spi.sm.SetX(writebits)
 	spi.sm.SetY(readbits)
 	spi.sm.Exec(pio.EncodeSet(pio.SrcDestPinDirs, 1)) // Set Pindir out.
@@ -215,13 +231,19 @@ func (spi *SPI3w) EnableDMA(enabled bool) error {
 
 func (spi *SPI3w) readDMA(r []uint32) error {
 	dreq := dmaPIO_RxDREQ(spi.sm)
-	spi.dma.Pull32(r, &spi.sm.RxReg().Reg, dreq)
+	err := spi.dma.Pull32(r, &spi.sm.RxReg().Reg, dreq)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func (spi *SPI3w) writeDMA(w []uint32) error {
 	dreq := dmaPIO_TxDREQ(spi.sm)
-	spi.dma.Push32(&spi.sm.TxReg().Reg, w, dreq)
+	err := spi.dma.Push32(&spi.sm.TxReg().Reg, w, dreq)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

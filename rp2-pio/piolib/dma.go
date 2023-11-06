@@ -86,6 +86,12 @@ func (ch dmaChannel) Init(cfg dmaChannelConfig) {
 	ch.HW().CTRL_TRIG.Set(cfg.CTRL)
 }
 
+// CurrentConfig copies the actual configuration of the DMA channel.
+func (ch dmaChannel) CurrentConfig() dmaChannelConfig {
+	ch.mustValid()
+	return dmaChannelConfig{CTRL: ch.HW().CTRL_TRIG.Get()}
+}
+
 func (ch dmaChannel) mustValid() {
 	if !ch.IsValid() {
 		panic("use of uninitialized DMA channel")
@@ -165,27 +171,114 @@ const (
 
 // Push32 writes each element of src slice into the memory location at dst.
 func (ch dmaChannel) Push32(dst *uint32, src []uint32, dreq uint32) error {
+	return dmaPush(ch, dst, src, dreq)
+}
+
+// Push16 writes each element of src slice into the memory location at dst.
+func (ch dmaChannel) Push16(dst *uint16, src []uint16, dreq uint32) error {
+	return dmaPush(ch, dst, src, dreq)
+}
+
+// Push8 writes each element of src slice into the memory location at dst.
+func (ch dmaChannel) Push8(dst *byte, src []byte, dreq uint32) error {
+	return dmaPush(ch, dst, src, dreq)
+}
+
+// Push32 writes each element of src slice into the memory location at dst.
+func dmaPush[T uint8 | uint16 | uint32](ch dmaChannel, dst *T, src []T, dreq uint32) error {
 	hw := ch.HW()
+	hw.CTRL_TRIG.ClearBits(rp.DMA_CH0_CTRL_TRIG_EN_Msk)
 	srcPtr := uint32(uintptr(unsafe.Pointer(&src[0])))
 	dstPtr := uint32(uintptr(unsafe.Pointer(dst)))
 	hw.READ_ADDR.Set(srcPtr)
 	hw.WRITE_ADDR.Set(dstPtr)
 	hw.TRANS_COUNT.Set(uint32(len(src)))
+
 	// memfence
-	var cc dmaChannelConfig
-	cc.CTRL = hw.CTRL_TRIG.Get()
+
+	cc := ch.CurrentConfig()
 	cc.setTREQ_SEL(dreq)
-	cc.setTransferDataSize(dmaTxSize32)
+	cc.setTransferDataSize(dmaSize[T]())
 	cc.setChainTo(ch.idx)
 	cc.setReadIncrement(true)
 	cc.setWriteIncrement(false)
 	cc.setEnable(true)
 
+	deadline := ch.dl.newDeadline()
+	// If currently busy we wait.
+	for ch.busy() {
+		if deadline.expired() {
+			return errContentionTimeout
+		}
+		gosched()
+	}
+
+	// We begin our DMA transfer here!
 	hw.CTRL_TRIG.Set(cc.CTRL)
 
+	deadline = ch.dl.newDeadline()
+	for ch.busy() {
+		if deadline.expired() {
+			ch.abort()
+			return errTimeout
+		}
+		gosched()
+	}
+	hw.CTRL_TRIG.ClearBits(rp.DMA_CH0_CTRL_TRIG_EN_Msk)
+	return nil
+}
+
+// Pull32 reads the memory location at src into dst slice, incrementing dst pointer but not src.
+func (ch dmaChannel) Pull32(dst []uint32, src *uint32, dreq uint32) error {
+	return dmaPull(ch, dst, src, dreq)
+}
+
+// Pull16 reads the memory location at src into dst slice, incrementing dst pointer but not src.
+func (ch dmaChannel) Pull16(dst []uint16, src *uint16, dreq uint32) error {
+	return dmaPull(ch, dst, src, dreq)
+}
+
+// Pull8 reads the memory location at src into dst slice, incrementing dst pointer but not src.
+func (ch dmaChannel) Pull8(dst []byte, src *byte, dreq uint32) error {
+	return dmaPull(ch, dst, src, dreq)
+}
+
+// Pull32 reads the memory location at src into dst slice, incrementing dst pointer but not src.
+func dmaPull[T uint8 | uint16 | uint32](ch dmaChannel, dst []T, src *T, dreq uint32) error {
+	hw := ch.HW()
+	hw.CTRL_TRIG.ClearBits(rp.DMA_CH0_CTRL_TRIG_EN_Msk)
+	srcPtr := uint32(uintptr(unsafe.Pointer(src)))
+	dstPtr := uint32(uintptr(unsafe.Pointer(&dst[0])))
+	hw.READ_ADDR.Set(srcPtr)
+	hw.WRITE_ADDR.Set(dstPtr)
+	hw.TRANS_COUNT.Set(uint32(len(dst)))
+
+	// memfence
+
+	cc := ch.CurrentConfig()
+	cc.setTREQ_SEL(dreq)
+	cc.setTransferDataSize(dmaSize[T]())
+	cc.setChainTo(ch.idx)
+	cc.setReadIncrement(false)
+	cc.setWriteIncrement(true)
+	cc.setEnable(true)
+
+	// If currently busy we wait.
 	deadline := ch.dl.newDeadline()
 	for ch.busy() {
 		if deadline.expired() {
+			return errContentionTimeout
+		}
+		gosched()
+	}
+
+	// We begin our DMA transfer here!
+	hw.CTRL_TRIG.Set(cc.CTRL)
+
+	deadline = ch.dl.newDeadline()
+	for ch.busy() {
+		if deadline.expired() {
+			ch.abort()
 			return errTimeout
 		}
 		gosched()
@@ -193,34 +286,18 @@ func (ch dmaChannel) Push32(dst *uint32, src []uint32, dreq uint32) error {
 	return nil
 }
 
-// Pull32 reads the memory location at src into dst slice, incrementing dst pointer but not src.
-func (ch dmaChannel) Pull32(dst []uint32, src *uint32, dreq uint32) error {
-	hw := ch.HW()
-	srcPtr := uint32(uintptr(unsafe.Pointer(src)))
-	dstPtr := uint32(uintptr(unsafe.Pointer(&dst[0])))
-	hw.READ_ADDR.Set(srcPtr)
-	hw.WRITE_ADDR.Set(dstPtr)
-	hw.TRANS_COUNT.Set(uint32(len(dst)))
-	// memfence
-	var cc dmaChannelConfig
-	cc.CTRL = hw.CTRL_TRIG.Get()
-	cc.setTREQ_SEL(dreq)
-	cc.setTransferDataSize(dmaTxSize32)
-	cc.setChainTo(ch.idx)
-	cc.setReadIncrement(false)
-	cc.setWriteIncrement(true)
-	cc.setEnable(true)
-
-	hw.CTRL_TRIG.Set(cc.CTRL)
-
-	deadline := ch.dl.newDeadline()
-	for ch.busy() {
-		if deadline.expired() {
-			return errTimeout
-		}
-		gosched()
+func dmaSize[T uint8 | uint16 | uint32]() dmaTxSize {
+	var a T
+	switch unsafe.Sizeof(a) {
+	case 1:
+		return dmaTxSize8
+	case 2:
+		return dmaTxSize16
+	case 4:
+		return dmaTxSize32
+	default:
+		panic("invalid DMA transfer size")
 	}
-	return nil
 }
 
 // abort aborts the current transfer sequence on the channel and blocks until
@@ -234,13 +311,14 @@ func (ch dmaChannel) abort() {
 	// Until this point, it is unsafe to restart the channel.
 	chMask := uint32(1 << ch.idx)
 	rp.DMA.CHAN_ABORT.Set(chMask)
-	retries := timeoutRetries
-	for rp.DMA.CHAN_ABORT.Get()&chMask != 0 && retries > 0 {
+
+	deadline := ch.dl.newDeadline()
+	for rp.DMA.CHAN_ABORT.Get()&chMask != 0 {
+		if deadline.expired() {
+			println("DMA abort timeout")
+			break
+		}
 		gosched()
-		retries--
-	}
-	if retries == 0 {
-		println("DMA abort timeout")
 	}
 }
 

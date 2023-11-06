@@ -305,11 +305,13 @@ func (sm StateMachine) SetY(value uint32) {
 }
 
 // GetX gets the X register of a state machine. The state machine should be halted beforehand.
+// Calling GetX during execution may desync the state machine.
 func (sm StateMachine) GetX() uint32 {
 	return sm.getDst(SrcDestX)
 }
 
 // GetY gets the Y register of a state machine. The state machine should be halted beforehand.
+// Calling GetY during execution may desync the state machine.
 func (sm StateMachine) GetY() uint32 {
 	return sm.getDst(SrcDestY)
 }

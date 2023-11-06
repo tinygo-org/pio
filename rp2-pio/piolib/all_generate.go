@@ -10,8 +10,9 @@ import (
 const timeoutRetries = math.MaxUint16 * 8
 
 var (
-	errTimeout = errors.New("piolib:timeout")
-	errBusy    = errors.New("piolib:busy")
+	errTimeout           = errors.New("piolib:timeout")
+	errContentionTimeout = errors.New("piolib:contention timeout")
+	errBusy              = errors.New("piolib:busy")
 
 	errDMAUnavail = errors.New("piolib:DMA channel unavailable")
 )
@@ -26,11 +27,6 @@ func gosched() {
 	runtime.Gosched()
 }
 
-type deadliner struct {
-	// timeout is a bitshift value for the timeout.
-	timeout uint8
-}
-
 type deadline struct {
 	t time.Time
 }
@@ -42,16 +38,23 @@ func (dl deadline) expired() bool {
 	return time.Since(dl.t) > 0
 }
 
+type deadliner struct {
+	// timeout is a bitshift value for the timeout.
+	timeout uint8
+}
+
 func (ch deadliner) newDeadline() deadline {
 	var t time.Time
 	if ch.timeout != 0 {
-		t = time.Now().Add(time.Duration(1 << ch.timeout))
+		calc := time.Duration(1 << ch.timeout)
+		t = time.Now().Add(calc)
 	}
 	return deadline{t: t}
 }
 
 func (ch *deadliner) setTimeout(timeout time.Duration) {
 	if timeout <= 0 {
+		ch.timeout = 0
 		return // No timeout.
 	}
 	for i := uint8(0); i < 64; i++ {
