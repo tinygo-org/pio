@@ -43,6 +43,7 @@ func (arb *dmaArbiter) Channel(channel uint8) dmaChannel {
 type dmaChannel struct {
 	hw  *dmaChannelHW
 	arb *dmaArbiter
+	dl  deadliner
 	idx uint8
 }
 
@@ -163,7 +164,7 @@ const (
 )
 
 // Push32 writes each element of src slice into the memory location at dst.
-func (ch dmaChannel) Push32(dst *uint32, src []uint32, dreq uint32) {
+func (ch dmaChannel) Push32(dst *uint32, src []uint32, dreq uint32) error {
 	hw := ch.HW()
 	srcPtr := uint32(uintptr(unsafe.Pointer(&src[0])))
 	dstPtr := uint32(uintptr(unsafe.Pointer(dst)))
@@ -182,18 +183,18 @@ func (ch dmaChannel) Push32(dst *uint32, src []uint32, dreq uint32) {
 
 	hw.CTRL_TRIG.Set(cc.CTRL)
 
-	retries := timeoutRetries
-	for ch.busy() && retries > 0 {
+	deadline := ch.dl.newDeadline()
+	for ch.busy() {
+		if deadline.expired() {
+			return errTimeout
+		}
 		gosched()
-		retries--
 	}
-	if retries == 0 {
-		println("DMA push32 timeout")
-	}
+	return nil
 }
 
 // Pull32 reads the memory location at src into dst slice, incrementing dst pointer but not src.
-func (ch dmaChannel) Pull32(dst []uint32, src *uint32, dreq uint32) {
+func (ch dmaChannel) Pull32(dst []uint32, src *uint32, dreq uint32) error {
 	hw := ch.HW()
 	srcPtr := uint32(uintptr(unsafe.Pointer(src)))
 	dstPtr := uint32(uintptr(unsafe.Pointer(&dst[0])))
@@ -212,14 +213,14 @@ func (ch dmaChannel) Pull32(dst []uint32, src *uint32, dreq uint32) {
 
 	hw.CTRL_TRIG.Set(cc.CTRL)
 
-	retries := timeoutRetries
-	for ch.busy() && retries > 0 {
+	deadline := ch.dl.newDeadline()
+	for ch.busy() {
+		if deadline.expired() {
+			return errTimeout
+		}
 		gosched()
-		retries--
 	}
-	if retries == 0 {
-		println("DMA push32 timeout")
-	}
+	return nil
 }
 
 // abort aborts the current transfer sequence on the channel and blocks until

@@ -110,6 +110,8 @@ func (cfg *StateMachineConfig) SetSidesetParams(bitCount uint8, optional bool, p
 
 // SetSidesetPins sets the lowest-numbered pin that will be affected by a side-set
 // operation.
+//
+// Remember to also set the pindir of the pin(s).
 func (cfg *StateMachineConfig) SetSidesetPins(firstPin machine.Pin) {
 	checkPinBaseAndCount(firstPin, 1)
 	cfg.PinCtrl = (cfg.PinCtrl & ^uint32(rp.PIO0_SM0_PINCTRL_SIDESET_BASE_Msk)) |
@@ -123,6 +125,8 @@ func (cfg *StateMachineConfig) SetSidesetPins(firstPin machine.Pin) {
 //     OUT PINDIRS or MOV PINS instruction. The data written to this pin will always be
 //     the least-significant bit of the OUT or MOV data.
 //   - Count defines the number of pins that will be affected by an OUT PINS, 0..32 inclusive.
+//
+// Remember to also set the pindir of the pin(s).
 func (cfg *StateMachineConfig) SetOutPins(base machine.Pin, count uint8) {
 	checkPinBaseAndCount(base, count)
 	cfg.PinCtrl = (cfg.PinCtrl & ^uint32(rp.PIO0_SM0_PINCTRL_OUT_BASE_Msk|rp.PIO0_SM0_PINCTRL_OUT_COUNT_Msk)) |
@@ -137,6 +141,8 @@ func (cfg *StateMachineConfig) SetOutPins(base machine.Pin, count uint8) {
 // The mapping of SET and OUT onto pins is configured independently. They may be mapped to distinct locations, for example
 // if one pin is to be used as a clock signal, and another for data. They may also be overlapping ranges of pins: a UART
 // transmitter might use SET to assert start and stop bits, and OUT instructions to shift out FIFO data to the same pins.
+//
+// Remember to also set the pindir of the pin(s).
 func (cfg *StateMachineConfig) SetSetPins(base machine.Pin, count uint8) {
 	checkPinBaseAndCount(base, count)
 	cfg.PinCtrl = (cfg.PinCtrl & ^uint32(rp.PIO0_SM0_PINCTRL_SET_BASE_Msk|rp.PIO0_SM0_PINCTRL_SET_COUNT_Msk)) |
@@ -145,6 +151,8 @@ func (cfg *StateMachineConfig) SetSetPins(base machine.Pin, count uint8) {
 }
 
 // SetInPins in a state machine configuration. Can overlap with OUT, SET and SIDESET pins.
+//
+// Remember to also set the pindir of the pin(s).
 func (cfg *StateMachineConfig) SetInPins(base machine.Pin) {
 	checkPinBaseAndCount(base, 1)
 	cfg.PinCtrl = (cfg.PinCtrl & ^uint32(rp.PIO0_SM0_PINCTRL_IN_BASE_Msk)) | (uint32(base) << rp.PIO0_SM0_PINCTRL_IN_BASE_Pos)

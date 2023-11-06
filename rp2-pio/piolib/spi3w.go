@@ -4,6 +4,7 @@ package piolib
 
 import (
 	"machine"
+	"time"
 
 	pio "github.com/tinygo-org/pio/rp2-pio"
 )
@@ -17,6 +18,7 @@ type SPI3w struct {
 
 	enableStatus bool
 	lastStatus   uint32
+	pinMask      uint32
 }
 
 func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, error) {
@@ -53,14 +55,15 @@ func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, e
 	// Initialize state machine.
 	sm.Init(offset, cfg)
 	pinMask := uint32(1<<dio | 1<<clk)
-	sm.SetPindirsMasked(0, pinMask)
+	sm.SetPindirsMasked(pinMask, pinMask)
 	sm.SetPinsMasked(0, pinMask)
 
 	sm.SetEnabled(true)
 
 	spiw := &SPI3w{
-		sm:     sm,
-		offset: offset,
+		sm:      sm,
+		offset:  offset,
+		pinMask: pinMask,
 	}
 	return spiw, nil
 }
@@ -103,20 +106,20 @@ func (spi *SPI3w) read(r []uint32) error {
 		return spi.readDMA(r)
 	}
 	i := 0
-	retries := timeoutRetries
-	for i < len(r) && retries > 0 {
+	deadline := spi.newDeadline()
+	for i < len(r) {
 		if spi.sm.IsRxFIFOEmpty() {
+			if deadline.expired() {
+				return errTimeout
+			}
 			gosched()
-			retries--
 			continue
 		}
 		r[i] = spi.sm.RxGet()
 		spi.sm.TxPut(r[i])
 		i++
 	}
-	if retries <= 0 {
-		return errTimeout
-	}
+
 	return nil
 }
 
@@ -124,19 +127,25 @@ func (spi *SPI3w) write(w []uint32) error {
 	if spi.IsDMAEnabled() {
 		return spi.writeDMA(w)
 	}
+
 	i := 0
-	retries := timeoutRetries
-	for i < len(w) && retries > 0 {
+	deadline := spi.newDeadline()
+	for i < len(w) {
 		if spi.sm.IsTxFIFOFull() {
+			if deadline.expired() {
+				return errTimeout
+			}
 			gosched()
-			retries--
 			continue
 		}
 		spi.sm.TxPut(w[i])
 		i++
 	}
-	if retries <= 0 {
-		return errTimeout
+	for !spi.sm.IsTxFIFOEmpty() {
+		if deadline.expired() {
+			return errTimeout
+		}
+		gosched()
 	}
 	return nil
 }
@@ -151,6 +160,15 @@ func (spi *SPI3w) EnableStatus(enabled bool) {
 	spi.enableStatus = enabled
 }
 
+// SetTimeout sets the read/write timeout. Use 0 as argument to disable timeouts.
+func (spi *SPI3w) SetTimeout(timeout time.Duration) {
+	spi.dma.dl.setTimeout(timeout)
+}
+
+func (spi *SPI3w) newDeadline() deadline {
+	return spi.dma.dl.newDeadline()
+}
+
 func (spi *SPI3w) getStatus() error {
 	var buf [1]uint32
 	err := spi.read(buf[:1])
@@ -161,12 +179,14 @@ func (spi *SPI3w) getStatus() error {
 	return nil
 }
 
+func (spi *SPI3w) forcePinsLow() { spi.sm.SetPinsMasked(0, spi.pinMask) }
+
 func (spi *SPI3w) prepTx(readbits, writebits uint32) {
 	spi.sm.SetEnabled(false)
 
-	spi.sm.ClearFIFOs()
-	spi.sm.SetX(readbits)
-	spi.sm.SetY(writebits)
+	// spi.sm.ClearFIFOs()
+	spi.sm.SetX(writebits)
+	spi.sm.SetY(readbits)
 	spi.sm.Exec(pio.EncodeSet(pio.SrcDestPinDirs, 1)) // Set Pindir out.
 	spi.sm.Jmp(spi.offset+spi3wWrapTarget, pio.JmpAlways)
 
@@ -188,6 +208,7 @@ func (spi *SPI3w) EnableDMA(enabled bool) error {
 	if !ok {
 		return errDMAUnavail
 	}
+	channel.dl = spi.dma.dl // Copy deadline.
 	spi.dma = channel
 	return nil
 }

@@ -2,10 +2,12 @@ package piolib
 
 import (
 	"errors"
+	"math"
 	"runtime"
+	"time"
 )
 
-const timeoutRetries = 1023
+const timeoutRetries = math.MaxUint16 * 8
 
 var (
 	errTimeout = errors.New("piolib:timeout")
@@ -22,4 +24,41 @@ var (
 //go:generate pioasm -o go spi3w.pio       spi3w_pio.go
 func gosched() {
 	runtime.Gosched()
+}
+
+type deadliner struct {
+	// timeout is a bitshift value for the timeout.
+	timeout uint8
+}
+
+type deadline struct {
+	t time.Time
+}
+
+func (dl deadline) expired() bool {
+	if dl.t.IsZero() {
+		return false
+	}
+	return time.Since(dl.t) > 0
+}
+
+func (ch deadliner) newDeadline() deadline {
+	var t time.Time
+	if ch.timeout != 0 {
+		t = time.Now().Add(time.Duration(1 << ch.timeout))
+	}
+	return deadline{t: t}
+}
+
+func (ch *deadliner) setTimeout(timeout time.Duration) {
+	if timeout <= 0 {
+		return // No timeout.
+	}
+	for i := uint8(0); i < 64; i++ {
+		calc := time.Duration(1 << i)
+		if calc > timeout {
+			ch.timeout = i
+			return
+		}
+	}
 }
