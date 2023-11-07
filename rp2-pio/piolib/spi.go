@@ -69,14 +69,15 @@ func NewSPI(sm pio.StateMachine, spicfg machine.SPIConfig) (*SPI, error) {
 
 	// MOSI, SCK output are low, MISO is input.
 	outMask := uint32((1 << spicfg.SCK) | (1 << spicfg.SDO))
+	inMask := uint32(1 << spicfg.SDI)
 	sm.SetPinsMasked(0, outMask)
-	sm.SetPindirsMasked(outMask, outMask|(1<<spicfg.SDI))
+	sm.SetPindirsMasked(outMask, outMask|inMask)
 
 	pincfg := machine.PinConfig{Mode: Pio.PinMode()}
 	spicfg.SCK.Configure(pincfg)
 	spicfg.SDO.Configure(pincfg)
 	spicfg.SDI.Configure(pincfg)
-	Pio.HW().INPUT_SYNC_BYPASS.SetBits(1 << spicfg.SDI)
+	Pio.SetInputSyncBypassMasked(inMask, inMask)
 
 	sm.Init(offset, cfg)
 	sm.SetEnabled(true)

@@ -225,8 +225,19 @@ func (pio *PIO) GetIRQ() uint8 {
 }
 
 // ClearIRQ clears IRQ flags when 1 is written to bit flag.
-func (pio *PIO) ClearIRQ(irqmsk uint8) {
-	pio.hw.SetIRQ(uint32(irqmsk))
+func (pio *PIO) ClearIRQ(irqMask uint8) {
+	pio.hw.SetIRQ(uint32(irqMask))
+}
+
+// SetInputSyncBypassMasked sets the pinMask bits of the INPUT_SYNC_BYPASS register
+// with the values in the corresponding bypassMask bits.
+//
+// There is a 2-flipflop synchronizer on each GPIO input, which protects
+// PIO logic from metastabilities. This increases input delay, and for
+// fast synchronous IO (e.g. SPI) these synchronizers may need to be bypassed.
+// If bit set the corresponding synchronizer is bypassed. If in doubt leave as zeros.
+func (pio *PIO) SetInputSyncBypassMasked(bypassMask, pinMask uint32) {
+	pio.hw.INPUT_SYNC_BYPASS.ReplaceBits(bypassMask, pinMask, 0)
 }
 
 // HW returns a pointer to the PIO's hardware registers.

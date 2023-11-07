@@ -96,12 +96,12 @@ func (sm StateMachine) IsEnabled() bool {
 	return sm.pio.hw.CTRL.HasBits(1 << (rp.PIO0_CTRL_SM_ENABLE_Pos + sm.index))
 }
 
-// Restart restarts the state machine
+// Restart clears internal StateMachine state which may otherwise be difficult to access, e.g. shift counters.
 func (sm StateMachine) Restart() {
 	sm.pio.hw.CTRL.SetBits(1 << (rp.PIO0_CTRL_SM_RESTART_Pos + sm.index))
 }
 
-// Restart a state machine clock divider with a phase of 0
+// ClkDivRestart forces clock dividers to restart their count and clear fractional accumulators (phase is zeroed).
 func (sm StateMachine) ClkDivRestart() {
 	sm.pio.hw.CTRL.SetBits(1 << (rp.PIO0_CTRL_CLKDIV_RESTART_Pos + sm.index))
 }
@@ -146,16 +146,16 @@ func (sm StateMachine) RxGet() uint32 {
 
 // TxReg gets a pointer to the TX FIFO register for this state machine.
 func (sm StateMachine) TxReg() *volatile.Register32 {
-	start := unsafe.Pointer(&sm.pio.hw.TXF0) // 0x10
+	start := uintptr(unsafe.Pointer(&sm.pio.hw.TXF0)) // 0x10
 	offset := uintptr(sm.index) * 4
-	return (*volatile.Register32)(unsafe.Pointer(uintptr(start) + offset))
+	return (*volatile.Register32)(unsafe.Pointer(start + offset))
 }
 
 // RxReg gets a pointer to the RX FIFO register for this state machine.
 func (sm StateMachine) RxReg() *volatile.Register32 {
-	start := unsafe.Pointer(&sm.pio.hw.RXF0) // 0x20
+	start := uintptr(unsafe.Pointer(&sm.pio.hw.RXF0)) // 0x20
 	offset := uintptr(sm.index) * 4
-	return (*volatile.Register32)(unsafe.Pointer(uintptr(start) + offset))
+	return (*volatile.Register32)(unsafe.Pointer(start + offset))
 }
 
 // RxFIFOLevel returns the number of elements currently in a state machine's RX FIFO.
@@ -238,6 +238,9 @@ func (sm StateMachine) SetPinsMasked(valueMask, pinMask uint32) {
 	sm.setPinExec(SrcDestPins, valueMask, pinMask)
 }
 
+// SetPindirsMasked sets the pin directions (input/output) on multiple pins for
+// the PIO instance. This method repeatedly reconfigures the state machines pins.
+// Use this method as convenience to set initial pin states BEFORE running state machine.
 func (sm StateMachine) SetPindirsMasked(dirMask, pinMask uint32) {
 	sm.setPinExec(SrcDestPinDirs, dirMask, pinMask)
 }
@@ -337,10 +340,10 @@ func (sm StateMachine) Jmp(toAddr uint8, cond JmpCond) {
 }
 
 const (
-	_REG_ALIAS_RW_BITS  = 0x0 << 12
-	_REG_ALIAS_XOR_BITS = 0x1 << 12
-	_REG_ALIAS_SET_BITS = 0x2 << 12
-	_REG_ALIAS_CLR_BITS = 0x3 << 12
+	// regAliasRW  = 0x0 << 12
+	regAliasXOR = 0x1 << 12
+	regAliasSET = 0x2 << 12
+	regAliasCLR = 0x3 << 12
 )
 
 // Gets the 'XOR' alias for a register
@@ -354,10 +357,13 @@ const (
 //   - Addr + 0x1000 : atomic XOR on write
 //   - Addr + 0x2000 : atomic bitmask set on write
 //   - Addr + 0x3000 : atomic bitmask clear on write
-func xorRegister(reg *volatile.Register32) *volatile.Register32 {
-	return (*volatile.Register32)(unsafe.Pointer(uintptr(unsafe.Pointer(reg)) | _REG_ALIAS_XOR_BITS))
+//
+//go:inline
+func aliasReg(alias uintptr, reg *volatile.Register32) *volatile.Register32 {
+	alias = uintptr(unsafe.Pointer(reg)) | alias
+	return (*volatile.Register32)(unsafe.Pointer(alias))
 }
 
 func xorBits(reg *volatile.Register32, bits uint32) {
-	xorRegister(reg).Set(bits)
+	aliasReg(regAliasXOR, reg).Set(bits)
 }

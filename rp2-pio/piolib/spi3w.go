@@ -3,8 +3,11 @@
 package piolib
 
 import (
+	"device/rp"
 	"machine"
+	"runtime/volatile"
 	"time"
+	"unsafe"
 
 	pio "github.com/tinygo-org/pio/rp2-pio"
 )
@@ -50,7 +53,25 @@ func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, e
 	pinCfg := machine.PinConfig{Mode: Pio.PinMode()}
 	dio.Configure(pinCfg)
 	clk.Configure(pinCfg)
-	Pio.HW().INPUT_SYNC_BYPASS.SetBits(1 << dio)
+	Pio.SetInputSyncBypassMasked(1<<dio, 1<<dio)
+
+	dioPad := pinPadCtrl(dio)
+	// Disable pull up and pull down.
+	dioPad.ReplaceBits(0, 1, rp.PADS_BANK0_GPIO0_PUE_Pos)
+	dioPad.ReplaceBits(0, 1, rp.PADS_BANK0_GPIO0_PDE_Pos)
+
+	dioPad.ReplaceBits(1, 1, rp.PADS_BANK0_GPIO0_SCHMITT_Pos) // Enable Schmitt trigger.
+
+	// 12mA drive strength for both clock and output.
+	const drive = rp.PADS_BANK0_GPIO0_DRIVE_12mA
+	const driveMsk = rp.PADS_BANK0_GPIO0_DRIVE_Msk >> rp.PADS_BANK0_GPIO0_DRIVE_Pos
+	dioPad.ReplaceBits(drive, driveMsk, rp.PADS_BANK0_GPIO0_DRIVE_Pos)
+
+	dioPad.ReplaceBits(1, 1, rp.PADS_BANK0_GPIO0_SLEWFAST_Pos) // Enable fast slewrate.
+
+	clkPad := pinPadCtrl(clk)
+	clkPad.ReplaceBits(drive, driveMsk, rp.PADS_BANK0_GPIO0_DRIVE_Pos)
+	clkPad.ReplaceBits(1, 1, rp.PADS_BANK0_GPIO0_SLEWFAST_Pos) // Enable fast slewrate.
 
 	// Initialize state machine.
 	sm.Init(offset, cfg)
@@ -58,13 +79,10 @@ func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, e
 	sm.SetPindirsMasked(pinMask, pinMask)
 	sm.SetPinsMasked(0, pinMask)
 
-	sm.SetEnabled(true)
-
 	spiw := &SPI3w{
-		sm:       sm,
-		offset:   offset,
-		pinMask:  pinMask,
-		statusEn: true,
+		sm:      sm,
+		offset:  offset,
+		pinMask: pinMask,
 	}
 	return spiw, nil
 }
@@ -163,8 +181,8 @@ func (spi *SPI3w) LastStatus() uint32 {
 	return spi.lastStatus
 }
 
-// enableStatus enables the reading of the last status word after a CmdRead/CmdWrite.
-func (spi *SPI3w) enableStatus(enabled bool) {
+// EnableStatus enables the reading of the last status word after a CmdRead/CmdWrite.
+func (spi *SPI3w) EnableStatus(enabled bool) {
 	spi.statusEn = enabled
 }
 
@@ -249,4 +267,8 @@ func (spi *SPI3w) writeDMA(w []uint32) error {
 
 func (spi *SPI3w) IsDMAEnabled() bool {
 	return spi.dma.IsValid()
+}
+
+func pinPadCtrl(pin machine.Pin) *volatile.Register32 {
+	return (*volatile.Register32)(unsafe.Pointer(uintptr(unsafe.Pointer(&rp.PADS_BANK0.GPIO0)) + uintptr(4*pin)))
 }
