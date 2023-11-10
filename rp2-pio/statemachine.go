@@ -24,7 +24,8 @@ func (sm StateMachine) IsClaimed() bool { return sm.pio.claimedSMMask&(1<<sm.ind
 func (sm StateMachine) Unclaim() { sm.pio.claimedSMMask &^= (1 << sm.index) }
 
 // Claim attempts to claim the state machine for use by the caller and returns
-// true if successful, or false if StateMachine already claimed.
+// true if successful, or false if StateMachine already claimed. Regardless of result
+// the state machine is guaranteed to be claimed after the call ends.
 func (sm StateMachine) TryClaim() bool {
 	if sm.IsClaimed() {
 		return false
