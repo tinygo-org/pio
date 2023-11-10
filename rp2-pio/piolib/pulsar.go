@@ -20,7 +20,7 @@ type Pulsar struct {
 
 // NewPulsar returns a new Pulsar ready for use.
 func NewPulsar(sm pio.StateMachine, pin machine.Pin) (*Pulsar, error) {
-	sm.Claim() // SM should be claimed beforehand, we just guarantee it's claimed.
+	sm.TryClaim() // SM should be claimed beforehand, we just guarantee it's claimed.
 	Pio := sm.PIO()
 
 	offset, err := Pio.AddProgram(pulsarInstructions, pulsarOrigin)

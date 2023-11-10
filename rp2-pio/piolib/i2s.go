@@ -15,7 +15,7 @@ type I2S struct {
 }
 
 func NewI2S(sm pio.StateMachine, data, clockAndNext machine.Pin) (*I2S, error) {
-	sm.Claim() // SM should be claimed beforehand, we just guarantee it's claimed.
+	sm.TryClaim() // SM should be claimed beforehand, we just guarantee it's claimed.
 	Pio := sm.PIO()
 
 	offset, err := Pio.AddProgram(i2sInstructions, i2sOrigin)

@@ -15,7 +15,7 @@ type WS2812 struct {
 }
 
 func NewWS2812(sm pio.StateMachine, pin machine.Pin, baud uint32) (*WS2812, error) {
-	sm.Claim() // SM should be claimed beforehand, we just guarantee it's claimed.
+	sm.TryClaim() // SM should be claimed beforehand, we just guarantee it's claimed.
 	whole, frac, err := pio.ClkDivFromFrequency(baud, machine.CPUFrequency())
 	if err != nil {
 		return nil, err

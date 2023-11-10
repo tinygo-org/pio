@@ -21,7 +21,7 @@ type Parallel8Tx struct {
 const noDMA uint32 = 0xffff_ffff
 
 func NewParallel8Tx(sm pio.StateMachine, wr, dStart machine.Pin, baud uint32) (*Parallel8Tx, error) {
-	sm.Claim() // SM should be claimed beforehand, we just guarantee it's claimed.
+	sm.TryClaim() // SM should be claimed beforehand, we just guarantee it's claimed.
 	const nPins = 8
 	if dStart+nPins > 31 {
 		return nil, errors.New("invalid D0..D7 pin range")

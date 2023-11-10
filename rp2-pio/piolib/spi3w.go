@@ -32,7 +32,7 @@ func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, e
 	}
 
 	// https://github.com/embassy-rs/embassy/blob/c4a8b79dbc927e46fcc71879673ad3410aa3174b/cyw43-pio/src/lib.rs#L90
-	sm.Claim() // SM should be claimed beforehand, we just guarantee it's claimed.
+	sm.TryClaim() // SM should be claimed beforehand, we just guarantee it's claimed.
 
 	Pio := sm.PIO()
 	offset, err := Pio.AddProgram(spi3wInstructions, spi3wOrigin)

@@ -71,7 +71,7 @@ func (pio *PIO) StateMachine(index uint8) StateMachine {
 func (pio *PIO) ClaimStateMachine() (sm StateMachine, err error) {
 	for i := uint8(0); i < 4; i++ {
 		sm = pio.StateMachine(i)
-		if sm.Claim() {
+		if sm.TryClaim() {
 			return sm, nil
 		}
 	}
