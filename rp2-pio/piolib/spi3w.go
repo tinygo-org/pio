@@ -25,6 +25,7 @@ type SPI3w struct {
 }
 
 func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, error) {
+	baud *= 2 // We have 2 instructions per bit in the hot loop.
 	whole, frac, err := pio.ClkDivFromFrequency(baud, machine.CPUFrequency())
 	if err != nil {
 		return nil, err // Early return on bad clock.
