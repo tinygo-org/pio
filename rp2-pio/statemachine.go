@@ -48,7 +48,7 @@ func (sm StateMachine) StateMachineIndex() uint8 { return sm.index }
 
 // IsValid returns true if state machine is a valid instance.
 func (sm StateMachine) IsValid() bool {
-	return (sm.pio.hw == rp.PIO0 || sm.pio.hw == rp.PIO1) && sm.index <= 3
+	return sm.pio != nil && (sm.pio.hw == rp.PIO0 || sm.pio.hw == rp.PIO1) && sm.index <= 3
 }
 
 // Init initializes the state machine
