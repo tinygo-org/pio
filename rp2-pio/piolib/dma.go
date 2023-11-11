@@ -20,7 +20,7 @@ type dmaArbiter struct {
 func (arb *dmaArbiter) ClaimChannel() (channel dmaChannel, ok bool) {
 	for i := uint8(0); i < 12; i++ {
 		ch := arb.Channel(i)
-		if ch.Claim() {
+		if ch.TryClaim() {
 			return ch, true
 		}
 	}
@@ -47,8 +47,8 @@ type dmaChannel struct {
 	idx uint8
 }
 
-// Claim claims the DMA channel for use by a peripheral and returns if it succeeded in claiming the channel.
-func (ch dmaChannel) Claim() bool {
+// TryClaim claims the DMA channel for use by a peripheral and returns if it succeeded in claiming the channel.
+func (ch dmaChannel) TryClaim() bool {
 	ch.mustValid()
 	if ch.IsClaimed() {
 		return false
@@ -186,6 +186,15 @@ func (ch dmaChannel) Push8(dst *byte, src []byte, dreq uint32) error {
 
 // Push32 writes each element of src slice into the memory location at dst.
 func dmaPush[T uint8 | uint16 | uint32](ch dmaChannel, dst *T, src []T, dreq uint32) error {
+	// If currently busy we wait until safe to edit hardware registers.
+	deadline := ch.dl.newDeadline()
+	for ch.busy() {
+		if deadline.expired() {
+			return errContentionTimeout
+		}
+		gosched()
+	}
+
 	hw := ch.HW()
 	hw.CTRL_TRIG.ClearBits(rp.DMA_CH0_CTRL_TRIG_EN_Msk)
 	srcPtr := uint32(uintptr(unsafe.Pointer(&src[0])))
@@ -203,15 +212,6 @@ func dmaPush[T uint8 | uint16 | uint32](ch dmaChannel, dst *T, src []T, dreq uin
 	cc.setReadIncrement(true)
 	cc.setWriteIncrement(false)
 	cc.setEnable(true)
-
-	deadline := ch.dl.newDeadline()
-	// If currently busy we wait.
-	for ch.busy() {
-		if deadline.expired() {
-			return errContentionTimeout
-		}
-		gosched()
-	}
 
 	// We begin our DMA transfer here!
 	hw.CTRL_TRIG.Set(cc.CTRL)
@@ -245,6 +245,15 @@ func (ch dmaChannel) Pull8(dst []byte, src *byte, dreq uint32) error {
 
 // Pull32 reads the memory location at src into dst slice, incrementing dst pointer but not src.
 func dmaPull[T uint8 | uint16 | uint32](ch dmaChannel, dst []T, src *T, dreq uint32) error {
+	// If currently busy we wait until safe to edit hardware registers.
+	deadline := ch.dl.newDeadline()
+	for ch.busy() {
+		if deadline.expired() {
+			return errContentionTimeout
+		}
+		gosched()
+	}
+
 	hw := ch.HW()
 	hw.CTRL_TRIG.ClearBits(rp.DMA_CH0_CTRL_TRIG_EN_Msk)
 	srcPtr := uint32(uintptr(unsafe.Pointer(src)))
@@ -262,15 +271,6 @@ func dmaPull[T uint8 | uint16 | uint32](ch dmaChannel, dst []T, src *T, dreq uin
 	cc.setReadIncrement(false)
 	cc.setWriteIncrement(true)
 	cc.setEnable(true)
-
-	// If currently busy we wait.
-	deadline := ch.dl.newDeadline()
-	for ch.busy() {
-		if deadline.expired() {
-			return errContentionTimeout
-		}
-		gosched()
-	}
 
 	// We begin our DMA transfer here!
 	hw.CTRL_TRIG.Set(cc.CTRL)
