@@ -4,15 +4,30 @@ public entry_point:
 	pull
 	set x, 23 ; Loop over 24 bits
 
-bitloop:
-	set pins, 1 ; Drive pin high
-	out y, 1 [5] ; Shift 1 bit out, and write it to y
-	jmp !y skip ; Skip the extra delay if the bit was 0
-	nop [5]
 
-skip:
-	set pins, 0 [5]
-	jmp x-- bitloop ; Jump if x nonzero, and decrement x
+; The way this WS2812 program works is by delaying+nops 
+; to reach the High/Low level times for a 1 and a zero.
+; Here are the values taken from the datasheet. We take 1 cycles approximately equal to 100ns
+;
+; T0H | 0 code  | high voltage time 0.35us | ±150ns
+; T0L | 0 code  | low voltage time  0.8us  | ±150ns
+; T1H | 1 code  | high voltage time 0.7us  | ±150ns
+; T1L | 1 code  | low voltage time  0.6us  | ±150ns
+
+bitloop:
+	set pins, 1
+	out y, 1
+	jmp !y t0l ; Gotten to this point we've accumulated 3 cycles on High
+
+t1h:
+	nop [3]        ; T1H=7: Missing 4 cycles to reach 7 high.
+	set pins 0 [4] ; T1L=6: Set+5delay+jmp
+	jmp x-- bitloop
+	jmp entry_point
+
+t0l: ; T0H=3.5, done.
+	set pins, 0 [4] ; T0L=8 Accumulate 7 so that with this and next jmp reach 8 on low.
+	jmp x-- bitloop
 	jmp entry_point
 
 % go {
