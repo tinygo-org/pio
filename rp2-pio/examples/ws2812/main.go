@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	const ws2812Pin = machine.GP16
+	const ws2812Pin = machine.GP0
 	sm, _ := pio.PIO0.ClaimStateMachine()
 	ws, err := piolib.NewWS2812(sm, ws2812Pin)
 	if err != nil {

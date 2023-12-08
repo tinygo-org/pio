@@ -18,9 +18,9 @@ type WS2812 struct {
 func NewWS2812(sm pio.StateMachine, pin machine.Pin) (*WS2812, error) {
 	const (
 		nanosecondsInSecond = 1_000_000_000 // 1e9
-		t0h                 = 400           // 400ns
-		t0hcycles           = 3             // 3 cycles per t0h, from pio file.
-		f0h                 = nanosecondsInSecond / (t0h / t0hcycles)
+		t1l                 = 600           // 400ns
+		t1lcycles           = 6             // 3 cycles per t0h, from pio file.
+		f1l                 = nanosecondsInSecond / (t1l / t1lcycles)
 	)
 	sm.TryClaim() // SM should be claimed beforehand, we just guarantee it's claimed.
 	// We add the program to PIO memory and store it's offset.
@@ -38,14 +38,15 @@ func NewWS2812(sm pio.StateMachine, pin machine.Pin) (*WS2812, error) {
 	sm.Init(offset, cfg)
 	sm.SetEnabled(true)
 	dev := &WS2812{sm: sm, offset: offset}
-	dev.SetT0H(t0h)
+	dev.SetT1L(t1l)
 	return dev, nil
 }
 
-// SetT0H sets the period of the T0H pulse.
-func (ws *WS2812) SetT0H(d time.Duration) error {
-	f0h := uint32(1_000_000_000 / d)
-	whole, frac, err := pio.ClkDivFromFrequency(f0h, machine.CPUFrequency())
+// SetT1L sets the period of the T0H pulse.
+func (ws *WS2812) SetT1L(d time.Duration) error {
+	const t1lcycles = 6
+	d /= t1lcycles
+	whole, frac, err := pio.ClkDivFromPeriod(uint32(d), machine.CPUFrequency())
 	if err != nil {
 		return err
 	}

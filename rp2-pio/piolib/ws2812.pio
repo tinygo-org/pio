@@ -26,7 +26,7 @@ t1h:
 	jmp entry_point
 
 t0l: ; T0H=3.5, done.
-	set pins, 0 [4] ; T0L=8 Accumulate 7 so that with this and next jmp reach 8 on low.
+	set pins, 0 [6] ; T0L=8 Accumulate 7 so that with this and next jmp reach 8 on low.
 	jmp x-- bitloop
 	jmp entry_point
 

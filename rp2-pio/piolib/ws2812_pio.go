@@ -23,7 +23,7 @@ var ws2812_ledInstructions = []uint16{
 		0xe400, //  6: set    pins, 0                [4] 
 		0x0042, //  7: jmp    x--, 2                     
 		0x0000, //  8: jmp    0                          
-		0xe400, //  9: set    pins, 0                [4] 
+		0xe600, //  9: set    pins, 0                [6] 
 		0x0042, // 10: jmp    x--, 2                     
 		0x0000, // 11: jmp    0                          
 		//     .wrap
