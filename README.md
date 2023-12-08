@@ -1,6 +1,6 @@
 # pio
 Provides clean API to interact with RP2040's on-board Programable Input/Output (PIO) block.
-See page 306 of the [RP2040 datasheet](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf) for more information.
+See chapter 3 of the [RP2040 datasheet](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf#page=310) for more information.
 
 
 ### piolib
