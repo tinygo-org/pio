@@ -203,12 +203,11 @@ func (spi *SPI3w) getStatus(dl deadline) error {
 		}
 		gosched()
 	}
-	var buf [1]uint32
-	err := spi.read(buf[:1], dl)
+
+	err := spi.read(unsafe.Slice(&spi.lastStatus, 1), dl)
 	if err != nil {
 		return err
 	}
-	spi.lastStatus = buf[0]
 	return nil
 }
 
