@@ -88,7 +88,7 @@ func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, e
 	return spiw, nil
 }
 
-func (spi SPI3w) CmdWrite(cmd uint32, w []uint32) (err error) {
+func (spi *SPI3w) CmdWrite(cmd uint32, w []uint32) (err error) {
 	writeBits := (1+len(w))*32 - 1
 	var readBits uint32
 	if spi.statusEn {
