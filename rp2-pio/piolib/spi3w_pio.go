@@ -14,9 +14,9 @@ var spi3wInstructions = []uint16{
 		//     .wrap_target
 		0x6001, //  0: out    pins, 1         side 0     
 		0x1040, //  1: jmp    x--, 0          side 1     
-		0xe080, //  2: set    pindirs, 0      side 0     
-		0xa042, //  3: nop                    side 0     
-		0x0067, //  4: jmp    !y, 7           side 0     
+		0x0067, //  2: jmp    !y, 7           side 0     
+		0xe080, //  3: set    pindirs, 0      side 0     
+		0xa042, //  4: nop                    side 0     
 		0x5001, //  5: in     pins, 1         side 1     
 		0x0085, //  6: jmp    y--, 5          side 0     
 		0x20a0, //  7: wait   1 pin, 0        side 0     
