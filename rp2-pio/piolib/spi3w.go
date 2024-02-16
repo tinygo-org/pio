@@ -88,6 +88,34 @@ func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, e
 	return spiw, nil
 }
 
+// Tx32 first writes the data in w to the bus and waits until the data is fully sent
+// and then reads len(r) 32 bit words from the bus into r. The data exchange is half duplex.
+func (spi *SPI3w) Tx32(w, r []uint32) (err error) {
+	var writeBits, readBits uint32
+	if len(w) > 0 {
+		writeBits = uint32(len(w)*32 - 1)
+	}
+	if len(r) > 0 {
+		readBits = uint32(len(r)*32 - 1)
+	}
+	spi.prepTx(readBits, writeBits)
+	deadline := spi.newDeadline()
+	if len(w) > 0 {
+		err = spi.write(w, deadline)
+		if err != nil {
+			return err
+		}
+		err = spi.waitWrite(deadline)
+		if err != nil {
+			return err
+		}
+	}
+	if len(r) == 0 {
+		return nil
+	}
+	return spi.read(r, deadline)
+}
+
 func (spi *SPI3w) CmdWrite(cmd uint32, w []uint32) (err error) {
 	writeBits := (1+len(w))*32 - 1
 	var readBits uint32
@@ -102,13 +130,9 @@ func (spi *SPI3w) CmdWrite(cmd uint32, w []uint32) (err error) {
 	if err != nil {
 		return err
 	}
-	// DMA/TxPush is done after this point but we still have to wait for
-	// the FIFO to be empty.
-	for !spi.sm.IsTxFIFOEmpty() {
-		if deadline.expired() {
-			return errTimeout
-		}
-		gosched()
+	err = spi.waitWrite(deadline)
+	if err != nil {
+		return err
 	}
 	if spi.statusEn {
 		err = spi.getStatus(deadline)
@@ -173,6 +197,18 @@ func (spi *SPI3w) write(w []uint32, dl deadline) error {
 		}
 		spi.sm.TxPut(w[i])
 		i++
+	}
+	return nil
+}
+
+func (spi *SPI3w) waitWrite(deadline deadline) error {
+	// DMA/TxPush is done after this point but we still have to wait for
+	// the FIFO to be empty.
+	for !spi.sm.IsTxFIFOEmpty() {
+		if deadline.expired() {
+			return errTimeout
+		}
+		gosched()
 	}
 	return nil
 }
