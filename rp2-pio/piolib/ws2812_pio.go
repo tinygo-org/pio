@@ -8,7 +8,7 @@ import (
 // ws2812_led
 
 const ws2812_ledWrapTarget = 0
-const ws2812_ledWrap = 8
+const ws2812_ledWrap = 10
 
 const ws2812_ledoffset_entry_point = 0
 
@@ -17,12 +17,14 @@ var ws2812_ledInstructions = []uint16{
 		0x80a0, //  0: pull   block                      
 		0xe037, //  1: set    x, 23                      
 		0xe001, //  2: set    pins, 1                    
-		0x6541, //  3: out    y, 1                   [5] 
+		0x6041, //  3: out    y, 1                       
 		0x0066, //  4: jmp    !y, 6                      
 		0xa542, //  5: nop                           [5] 
-		0xe500, //  6: set    pins, 0                [5] 
+		0xe900, //  6: set    pins, 0                [9] 
 		0x0042, //  7: jmp    x--, 2                     
-		0x0000, //  8: jmp    0                          
+		0xbf42, //  8: nop                           [31]
+		0xb342, //  9: nop                           [19]
+		0x0000, // 10: jmp    0                          
 		//     .wrap
 }
 const ws2812_ledOrigin = -1

@@ -12,7 +12,7 @@ import (
 func main() {
 	const ws2812Pin = machine.GP16
 	sm, _ := pio.PIO0.ClaimStateMachine()
-	ws, err := piolib.NewWS2812(sm, ws2812Pin, 400_000)
+	ws, err := piolib.NewWS2812(sm, ws2812Pin)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -26,10 +26,12 @@ func main() {
 		const longWait = 6 * time.Second
 		const shortWait = 2 * time.Second
 		// Start Stoplight in red (STOP).
+		println("red")
 		ws.SetColor(red)
 		time.Sleep(4 * time.Second)
 
 		// Before green we go through a red+yellow stage (PREP. PULL AWAY)
+		println("green/amber switching")
 		for i := 0; i < 2; i++ {
 			const semiSleep = time.Second / 2
 			ws.SetColor(amber)
@@ -37,8 +39,11 @@ func main() {
 			ws.SetColor(red)
 			time.Sleep(semiSleep)
 		}
+		println("green")
 		ws.SetColor(green)
 		time.Sleep(longWait)
+
+		println("amber")
 		ws.SetColor(amber)
 		time.Sleep(shortWait)
 	}
