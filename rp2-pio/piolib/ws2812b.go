@@ -5,7 +5,6 @@ package piolib
 import (
 	"image/color"
 	"machine"
-	"time"
 
 	pio "github.com/tinygo-org/pio/rp2-pio"
 )
@@ -16,10 +15,9 @@ type WS2812B struct {
 }
 
 func NewWS2812B(sm pio.StateMachine, pin machine.Pin) (*WS2812B, error) {
-	time.Sleep(2 * time.Second)
 	// https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf
 	const (
-		t0h        = 410 // augment it slightly to compensate for PIO clock instability.
+		t0h        = 390 // lower it slightly to compensate for PIO clock instability.
 		t0h_cycles = 3   // Taken from PIO program by observing instructions used.
 		period     = t0h / t0h_cycles
 		freq       = 1_000_000_000 / period

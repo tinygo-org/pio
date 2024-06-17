@@ -21,13 +21,11 @@ bitloop:
 	jmp hi  [2]  ; Here we finish t1h with 3 cycles, reaching 6 total, so double
 
 low:
-	set pins, 0 [2] ; To create T0L we need 6 cycles, 3 of them are part of hi branch.
+	set pins, 0 [3] ; To create T0L we need 6 cycles, 3 of them are part of hi branch.
 
 hi:
-	set pins 0 [2]  ; 
-	
-	; Finished setting bit, continue with rest of bits.
-	jmp x-- bitloop
+	set pins 0 [1]  ; 
+	jmp x-- bitloop ; Finished setting bit, continue with rest of bits.
 
 	; By this point we are done setting color, we need to latch it by waiting over 50us.
 	; To reach 50us we need to wait 50000[ns] / 136[ns/cycle] = 366 cycles. 
