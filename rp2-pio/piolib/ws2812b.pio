@@ -1,0 +1,54 @@
+.program ws2812b_led
+
+public entry_point:
+	pull
+	set x, 23 ; Loop over 24 bits
+
+; Timings according to Datasheet
+; T0H = 400ns
+; T0L = 850ns
+; T1H = 800ns
+; T1L = 450ns
+
+; We take 410ns as baseline unit of time and take T0H and T1L = baseline.
+; In bitloop we have 3 unavoidable instructions during high cycle
+; This means 3 cycles == baseline = 410ns. Each cycle is 410ns/3 = 136ns/cycle.
+
+bitloop:
+	set pins, 1  ; Drive pin high
+	out y, 1 ; Shift 1 bit out, and write it to y
+	jmp !y low   ; Jump to LOW bit part.
+	jmp hi  [2]  ; Here we finish t1h with 3 cycles, reaching 6 total, so double
+
+low:
+	set pins, 0 [2] ; To create T0L we need 6 cycles, 3 of them are part of hi branch.
+
+hi:
+	set pins 0 [2]  ; 
+	
+	; Finished setting bit, continue with rest of bits.
+	jmp x-- bitloop
+
+	; By this point we are done setting color, we need to latch it by waiting over 50us.
+	; To reach 50us we need to wait 50000[ns] / 136[ns/cycle] = 366 cycles. 
+	nop [31] ; 32
+	nop [31] ; 64
+	nop [31] ; 96
+	nop [31] ; 128
+	nop [31] ; 160
+	nop [31] ; 192
+	nop [31] ; 224
+	nop [31] ; 256
+	nop [31] ; 288
+	nop [31] ; 320
+	nop [31] ; 352
+	jmp entry_point [13] ; 366-352 = 14
+
+% go {
+//go:build rp2040
+package piolib
+
+import (
+    pio "github.com/tinygo-org/pio/rp2-pio"
+)
+%}
