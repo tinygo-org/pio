@@ -25,7 +25,7 @@ func main() {
 			for r := uint8(0); r < 255; r |= 1 {
 				for b := uint8(0); b < 255; b |= 1 {
 					time.Sleep(time.Second / 8)
-					ws.SetRGB(r, g, b)
+					ws.PutRGB(r, g, b)
 					b <<= 1
 					println(r, g, b)
 				}
@@ -44,24 +44,24 @@ func main() {
 		const shortWait = 2 * time.Second
 		// Start Stoplight in red (STOP).
 		println("red")
-		ws.SetColor(red)
+		ws.PutColor(red)
 		time.Sleep(4 * time.Second)
 
 		// Before green we go through a red+yellow stage (PREP. PULL AWAY)
 		println("green/amber switching")
 		for i := 0; i < 2; i++ {
 			const semiSleep = time.Second / 2
-			ws.SetColor(amber)
+			ws.PutColor(amber)
 			time.Sleep(semiSleep)
-			ws.SetColor(red)
+			ws.PutColor(red)
 			time.Sleep(semiSleep)
 		}
 		println("green")
-		ws.SetColor(green)
+		ws.PutColor(green)
 		time.Sleep(longWait)
 
 		println("amber")
-		ws.SetColor(amber)
+		ws.PutColor(amber)
 		time.Sleep(shortWait)
 	}
 }

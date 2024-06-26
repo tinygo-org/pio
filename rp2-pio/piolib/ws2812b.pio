@@ -1,46 +1,38 @@
-.program ws2812b_led
-
-public entry_point:
-	pull
-	set x, 23 ; Loop over 24 bits
-
 ; Timings according to Datasheet
-; T0H = 400ns
-; T0L = 850ns
-; T1H = 800ns
-; T1L = 450ns
+; 	T0H = 400ns
+; 	T0L = 850ns
+; 	T1H = 800ns
+; 	T1L = 450ns
+; Thus, a whole cycle is 1250ns. This will be our base unit of transmission.
+; Next unit of time is one that is closest to T0H and T1L. 
+; If we divide baseline by 3 we get 1250/3 = 416.67, falling between 400 and 450.
+; Since we need more than 1 instruction per high/low time, we examine cases where
+; we split the split baseline in 3 and then calculate result PIO clockdiv since 3 is minimum
+; number of instructions to do first part of high time.
+;
+; From the equations:
+;  piofreq = 256*clockfreq / (256*whole + frac)
+; where period = 1e9/freq => freq = 1e9/period, so:
+;  1e9/period = 256*clockfreq / (256*whole + frac) =>
+;  256*whole + frac = 256*clockfreq*period/1e9
+; So, the previous equations yield:
+;	416.67/3=138.89 -> ???
 
-; We take 410ns as baseline unit of time and take T0H and T1L = baseline.
-; In bitloop we have 3 unavoidable instructions during high cycle
-; This means 3 cycles == baseline = 410ns. Each cycle is 410ns/3 = 136ns/cycle.
-
+.program ws2812b_led
+public entry_point:
+	pull ifempty block ; Do autopull, blocks if Tx empty.
 bitloop:
-	set pins, 1  ; Drive pin high
-	out y, 1 ; Shift 1 bit out, and write it to y
-	jmp !y low   ; Jump to LOW bit part.
-	jmp hi  [2]  ; Here we finish t1h with 3 cycles, reaching 6 total, so double
+	; 3 instructions high logic level
+	set pins, 1    ; Drive pin high at start of pulse.
+	out y, 1       ; Shift 1 bit out, and write it to y.
+	jmp !y lolo    ; Jump to LOW bit part.
+	jmp hilo [2]   ; Jump to 
 
-low:
-	set pins, 0 [3] ; To create T0L we need 6 cycles, 3 of them are part of hi branch.
-
-hi:
-	set pins 0 [1]  ; 
-	jmp x-- bitloop ; Finished setting bit, continue with rest of bits.
-
-	; By this point we are done setting color, we need to latch it by waiting over 50us.
-	; To reach 50us we need to wait 50000[ns] / 136[ns/cycle] = 366 cycles. 
-	nop [31] ; 32
-	nop [31] ; 64
-	nop [31] ; 96
-	nop [31] ; 128
-	nop [31] ; 160
-	nop [31] ; 192
-	nop [31] ; 224
-	nop [31] ; 256
-	nop [31] ; 288
-	nop [31] ; 320
-	nop [31] ; 352
-	jmp entry_point [13] ; 366-352 = 14
+lolo:
+	set pins, 0 [2]; To create T0L we need 6 cycles, 3 of them are part of hi branch.
+hilo:
+	set pins, 0 
+	jmp !osre bitloop [1]
 
 % go {
 //go:build rp2040

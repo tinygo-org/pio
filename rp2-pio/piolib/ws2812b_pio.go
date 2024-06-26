@@ -8,33 +8,20 @@ import (
 // ws2812b_led
 
 const ws2812b_ledWrapTarget = 0
-const ws2812b_ledWrap = 20
+const ws2812b_ledWrap = 7
 
 const ws2812b_ledoffset_entry_point = 0
 
 var ws2812b_ledInstructions = []uint16{
 		//     .wrap_target
-		0x80a0, //  0: pull   block                      
-		0xe037, //  1: set    x, 23                      
-		0xe001, //  2: set    pins, 1                    
-		0x6041, //  3: out    y, 1                       
-		0x0066, //  4: jmp    !y, 6                      
-		0x0207, //  5: jmp    7                      [2] 
-		0xe300, //  6: set    pins, 0                [3] 
-		0xe100, //  7: set    pins, 0                [1] 
-		0x0042, //  8: jmp    x--, 2                     
-		0xbf42, //  9: nop                           [31]
-		0xbf42, // 10: nop                           [31]
-		0xbf42, // 11: nop                           [31]
-		0xbf42, // 12: nop                           [31]
-		0xbf42, // 13: nop                           [31]
-		0xbf42, // 14: nop                           [31]
-		0xbf42, // 15: nop                           [31]
-		0xbf42, // 16: nop                           [31]
-		0xbf42, // 17: nop                           [31]
-		0xbf42, // 18: nop                           [31]
-		0xbf42, // 19: nop                           [31]
-		0x0d00, // 20: jmp    0                      [13]
+		0x80e0, //  0: pull   ifempty block              
+		0xe001, //  1: set    pins, 1                    
+		0x6041, //  2: out    y, 1                       
+		0x0065, //  3: jmp    !y, 5                      
+		0x0206, //  4: jmp    6                      [2] 
+		0xe200, //  5: set    pins, 0                [2] 
+		0xe000, //  6: set    pins, 0                    
+		0x01e1, //  7: jmp    !osre, 1               [1] 
 		//     .wrap
 }
 const ws2812b_ledOrigin = -1
