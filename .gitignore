@@ -8,6 +8,10 @@
 *.so
 *.dylib
 
+# Binary objects
+*.uf2
+*.bin
+*.hex
 
 # Test binary, built with `go test -c`
 *.test
