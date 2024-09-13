@@ -23,7 +23,8 @@ var (
 //go:generate pioasm -o go ws2812.pio     ws2812_pio.go
 //go:generate pioasm -o go ws2812b.pio     ws2812b_pio.go
 //go:generate pioasm -o go i2s.pio        i2s_pio.go
-//go:generate pioasm -o go spi3w.pio       spi3w_pio.go
+//go:generate pioasm -o go spi3w.pio      spi3w_pio.go
+//go:generate pioasm -o go hub75.pio      hub75_pio.go
 func gosched() {
 	runtime.Gosched()
 }
