@@ -33,7 +33,7 @@
     in pins, 1  side 1 [1] ; instruction stalls, so we stall with SCK low)
 
 % go {
-//go:build rp2040
+//go:build rp2040 || rp2350
 package piolib
 
 import (

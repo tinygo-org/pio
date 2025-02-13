@@ -43,7 +43,7 @@ public entry_point:
     set x, 14         side 0b11
 
 % go {
-//go:build rp2040
+//go:build rp2040 || rp2350
 
 package piolib
 
