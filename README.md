@@ -52,16 +52,15 @@ sudo make install
 
 To develop a PIO program you first start out with the .pio file. Let's look at the Pulsar example first.
 
-1. `pulsar.pio` specifies a binary PIO program that can be loaded to the PIO program memory.
-2. `all_generate.go`: holds the code generation command on the line with `//go:generate pioasm -o go pulsar.pio     pulsar_pio.go` which by itself generates the raw binary code that can be loaded onto the PIO along with helper code to load it correctly inside `pulsar_pio.go`.
-3. `pulsar_pio.go`: contains the generated code by the `pioasm` tool.
-4. `pulsar.go`: contains the User facing code that allows using the PIO as intended by the author.
+1. [`pulsar.pio`](./rp2-pio/piolib/pulsar.pio): specifies a binary PIO program that can be loaded to the PIO program memory.
+2. [`all_generate.go`](./rp2-pio/piolib/all_generate.go): holds the code generation command on the line with `//go:generate pioasm -o go pulsar.pio     pulsar_pio.go` which by itself generates the raw binary code that can be loaded onto the PIO along with helper code to load it correctly inside `pulsar_pio.go`.
+3. [`pulsar_pio.go`](./rp2-pio/piolib/pulsar_pio.go): contains the generated code by the `pioasm` tool.
+4. [`pulsar.go`](./rp2-pio/piolib/pulsar.go): contains the User facing code that allows using the PIO as intended by the author.
 
 ### Regenerating piolib
 
 ```shell
-cd rp2-pio/piolib
-go generate .
+go generate ./...
 ```
 
 ### Other notes
