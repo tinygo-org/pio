@@ -266,21 +266,7 @@ func (spi *SPI3w) prepTx(readbits, writebits uint32) {
 // DMA code below.
 
 func (spi *SPI3w) EnableDMA(enabled bool) error {
-	dmaAlreadyEnabled := spi.IsDMAEnabled()
-	if !enabled || dmaAlreadyEnabled {
-		if !enabled && dmaAlreadyEnabled {
-			spi.dma.Unclaim()
-			spi.dma = dmaChannel{} // Invalidate DMA channel.
-		}
-		return nil
-	}
-	channel, ok := _DMA.ClaimChannel()
-	if !ok {
-		return errDMAUnavail
-	}
-	channel.dl = spi.dma.dl // Copy deadline.
-	spi.dma = channel
-	return nil
+	return spi.dma.helperEnableDMA(enabled)
 }
 
 func (spi *SPI3w) readDMA(r []uint32) error {
@@ -302,7 +288,7 @@ func (spi *SPI3w) writeDMA(w []uint32) error {
 }
 
 func (spi *SPI3w) IsDMAEnabled() bool {
-	return spi.dma.IsValid()
+	return spi.dma.helperIsEnabled()
 }
 
 func pinPadCtrl(pin machine.Pin) *volatile.Register32 {

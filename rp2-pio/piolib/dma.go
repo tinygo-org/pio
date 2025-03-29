@@ -40,6 +40,28 @@ func (arb *dmaArbiter) Channel(channel uint8) dmaChannel {
 	}
 }
 
+func (dma *dmaChannel) helperIsEnabled() bool {
+	return dma.IsValid()
+}
+
+func (dma *dmaChannel) helperEnableDMA(enabled bool) error {
+	dmaAlreadyEnabled := dma.helperIsEnabled()
+	if !enabled || dmaAlreadyEnabled {
+		if !enabled && dmaAlreadyEnabled {
+			dma.Unclaim()
+			*dma = dmaChannel{} // Invalidate DMA channel.
+		}
+		return nil
+	}
+	channel, ok := _DMA.ClaimChannel()
+	if !ok {
+		return errDMAUnavail
+	}
+	channel.dl = dma.dl // save deadliner from existing DMA channel, maybe set by user in future.
+	*dma = channel
+	return nil
+}
+
 type dmaChannel struct {
 	hw  *dmaChannelHW
 	arb *dmaArbiter
