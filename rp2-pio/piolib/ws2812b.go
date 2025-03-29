@@ -17,6 +17,8 @@ type WS2812B struct {
 }
 
 func NewWS2812B(sm pio.StateMachine, pin machine.Pin) (*WS2812B, error) {
+	// See ws2812b.pio for more information on how the timings are calculated.
+	// WS2812B Datasheet:
 	// https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf
 	const (
 		baseline      = 1250.
@@ -78,7 +80,7 @@ func (ws *WS2812B) PutColor(c color.Color) {
 }
 
 // WriteRaw writes raw GRB values to a strip of WS2812B LEDs. Each uint32 is a WS2812B color
-// which can be created with 3 uint8 color values::
+// which can be created with 3 uint8 color values:
 //
 //	color := uint32(g)<<24 | uint32(r)<<16 | uint32(b)<<8
 func (ws *WS2812B) WriteRaw(rawGRB []uint32) error {
@@ -101,25 +103,6 @@ func (ws *WS2812B) WriteRaw(rawGRB []uint32) error {
 	return nil
 }
 
-// EnableDMA enables DMA for vectorized writes.
-func (ws *WS2812B) EnableDMA(enabled bool) error {
-	dmaAlreadyEnabled := ws.IsDMAEnabled()
-	if !enabled || dmaAlreadyEnabled {
-		if !enabled && dmaAlreadyEnabled {
-			ws.dma.Unclaim()
-			ws.dma = dmaChannel{} // Invalidate DMA channel.
-		}
-		return nil
-	}
-	channel, ok := _DMA.ClaimChannel()
-	if !ok {
-		return errDMAUnavail
-	}
-	channel.dl = ws.dma.dl // Copy deadline.
-	ws.dma = channel
-	return nil
-}
-
 func (ws *WS2812B) writeDMA(w []uint32) error {
 	dreq := dmaPIO_TxDREQ(ws.sm)
 	err := ws.dma.Push32(&ws.sm.TxReg().Reg, w, dreq)
@@ -129,7 +112,12 @@ func (ws *WS2812B) writeDMA(w []uint32) error {
 	return nil
 }
 
+// EnableDMA enables DMA for vectorized writes.
+func (ws *WS2812B) EnableDMA(enabled bool) error {
+	return ws.dma.helperEnableDMA(enabled)
+}
+
 // IsDMAEnabled returns true if DMA is enabled.
 func (ws *WS2812B) IsDMAEnabled() bool {
-	return ws.dma.IsValid()
+	return ws.dma.helperIsEnabled()
 }

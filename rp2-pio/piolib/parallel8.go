@@ -80,29 +80,17 @@ func (pl *Parallel8Tx) Write(data []uint8) error {
 }
 
 func (pl *Parallel8Tx) IsDMAEnabled() bool {
-	return pl.dma.IsValid()
+	return pl.dma.helperIsEnabled()
 }
 
 func (pl *Parallel8Tx) EnableDMA(enabled bool) error {
 	if !pl.sm.IsValid() {
 		return errors.New("PIO Statemachine needs initializing") //Not initialized
 	}
-	dmaAlreadyEnabled := pl.IsDMAEnabled()
-	if !enabled || dmaAlreadyEnabled {
-		if !enabled && dmaAlreadyEnabled {
-			pl.dma.Unclaim()
-			pl.dma = dmaChannel{} // Invalidate DMA channel.
-		}
-		return nil
+	err := pl.dma.helperEnableDMA(enabled)
+	if !enabled || err != nil {
+		return err
 	}
-
-	channel, ok := _DMA.ClaimChannel()
-	if !ok {
-		return errDMAUnavail
-	}
-
-	channel.dl = pl.dma.dl // Copy deadline.
-	pl.dma = channel
 	cc := pl.dma.CurrentConfig()
 	cc.setBSwap(false)
 	cc.setTransferDataSize(dmaTxSize8)
