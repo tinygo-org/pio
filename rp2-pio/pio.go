@@ -86,7 +86,7 @@ func (pio *PIO) ClaimStateMachine() (sm StateMachine, err error) {
 // origin indicates where in the PIO execution memory the program must be loaded,
 // or -1 if the code is position independent.
 func (pio *PIO) AddProgram(instructions []uint16, origin int8) (offset uint8, _ error) {
-	maybeOffset := pio.findOffsetForProgram(instructions, origin)
+	maybeOffset := pio.FindOffsetForProgram(len(instructions), origin)
 	if maybeOffset < 0 {
 		return 0, ErrOutOfProgramSpace
 	}
@@ -141,13 +141,13 @@ func (pio *PIO) writeInstructionMemory(offset uint8, value uint16) {
 	reg.Set(uint32(value))
 }
 
-func (pio *PIO) findOffsetForProgram(instructions []uint16, origin int8) int8 {
-	programLen := uint32(len(instructions))
+func (pio *PIO) FindOffsetForProgram(programLen int, origin int8) int8 {
+	programLen32 := uint32(programLen)
 	programMask := uint32((1 << programLen) - 1)
 
 	// Program has fixed offset (not relocatable)
 	if origin >= 0 {
-		if uint32(origin) > 32-programLen {
+		if uint32(origin) > 32-programLen32 {
 			return -1
 		}
 
