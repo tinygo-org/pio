@@ -59,7 +59,7 @@ func NewSPI(sm pio.StateMachine, spicfg machine.SPIConfig) (*SPI, error) {
 	cfg := cfger(offset)
 
 	cfg.SetOutPins(spicfg.SDO, 1)
-	cfg.SetInPins(spicfg.SDI)
+	cfg.SetInPins(spicfg.SDI, 1)
 	cfg.SetSidesetPins(spicfg.SCK)
 
 	cfg.SetOutShift(false, true, uint16(nbits))

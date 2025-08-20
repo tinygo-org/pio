@@ -44,15 +44,9 @@ type PIO struct {
 	nc            noCopy
 }
 
-// BlockIndex returns 0 or 1 depending on whether the underlying device is PIO0 or PIO1.
+// BlockIndex returns 0, 1, or 2 depending on whether the underlying device is PIO0, PIO1, or PIO2.
 func (pio *PIO) BlockIndex() uint8 {
-	switch pio.hw {
-	case rp.PIO0:
-		return 0
-	case rp.PIO1:
-		return 1
-	}
-	panic(badPIO)
+	return pio.blockIndex()
 }
 
 // StateMachine returns a state machine by index.
@@ -205,7 +199,8 @@ func (pio *PIO) smHW(index uint8) *statemachineHW {
 	return (*statemachineHW)(unsafe.Pointer(uintptr(ptr)))
 }
 
-// PinMode returns the PinMode for a PIO state machine, either PIO0 or PIO1.
+// PinMode returns the PinMode for a PIO state machine, one of
+// PIO0, PIO1, or PIO2.
 func (pio *PIO) PinMode() machine.PinMode {
 	return machine.PinPIO0 + machine.PinMode(pio.BlockIndex())
 }
@@ -240,6 +235,32 @@ func (pio *PIO) SetInputSyncBypassMasked(bypassMask, pinMask uint32) {
 	pio.hw.INPUT_SYNC_BYPASS.ReplaceBits(bypassMask, pinMask, 0)
 }
 
+// GPIOStates returns the current PIO-commanded state for output GPIOs.
+// This allows for debugging of a PIO program using setting or side-setting
+// GPIO pins as signals.
+func (pio *PIO) GPIOStates() uint32 {
+	return pio.hw.DBG_PADOUT.Get()
+}
+
+// GPIODirections returns the current PIO-commanded pin directions (Output Enable).
+// Useful for debugging the state of a PIO program that swaps pin directions.
+func (pio *PIO) GPIODirections() uint32 {
+	return pio.hw.DBG_PADOE.Get()
+}
+
+const (
+	// This bit address is retroactively declared valid as the PIO hardware version
+	// for RP2040 (which is 0) according to the RP2350 datasheet, but undefined in
+	// its datasheet or SVD so we define it here for compatibility.
+	pio0_SM0_DBG_CFGINFO_VERSION_Pos = 0x1C
+)
+
+// Version returns the version of the PIO hardware.
+// 0 for RP2040, 1 for RP2350.
+func (pio *PIO) Version() uint8 {
+	return uint8(pio.hw.DBG_CFGINFO.Get() >> pio0_SM0_DBG_CFGINFO_VERSION_Pos)
+}
+
 // HW returns a pointer to the PIO's hardware registers.
 func (pio *PIO) HW() *pioHW { return (*pioHW)(unsafe.Pointer(pio.hw)) }
 
@@ -251,16 +272,18 @@ type pioHW struct {
 	FLEVEL            volatile.Register32 // 0xC
 	TXF               [4]volatile.Register32
 	RXF               [4]volatile.Register32
-	IRQ               volatile.Register32     // 0x30
-	IRQ_FORCE         volatile.Register32     // 0x34
-	INPUT_SYNC_BYPASS volatile.Register32     // 0x38
-	DBG_PADOUT        volatile.Register32     // 0x3C
-	DBG_PADOE         volatile.Register32     // 0x40
-	DBG_CFGINFO       volatile.Register32     // 0x44
-	INSTR_MEM         [32]volatile.Register32 // 0x48..0xC4
-	SM                [4]statemachineHW       // SM0=[0xC8..0xDC], .. 0x124
-	INTR              volatile.Register32     // 0x128
-	IRQ_INT           [2]irqINTHW             // 0x12C..0x140
+	IRQ               volatile.Register32                       // 0x30
+	IRQ_FORCE         volatile.Register32                       // 0x34
+	INPUT_SYNC_BYPASS volatile.Register32                       // 0x38
+	DBG_PADOUT        volatile.Register32                       // 0x3C
+	DBG_PADOE         volatile.Register32                       // 0x40
+	DBG_CFGINFO       volatile.Register32                       // 0x44
+	INSTR_MEM         [32]volatile.Register32                   // 0x48..0xC4
+	SM                [4]statemachineHW                         // SM0=[0xC8..0xDC], .. 0x124
+	RXF_PUTGET        [rp2350ExtraReg][4][4]volatile.Register32 // ----- | 0x128
+	GPIOBASE          [rp2350ExtraReg]volatile.Register32       // ----- | 0x168
+	INTR              volatile.Register32                       // 0x128 | 0x16C
+	IRQ_INT           [2]irqINTHW                               // 0x12C..0x140 | 0x170..0x184
 }
 
 type irqINTHW struct {

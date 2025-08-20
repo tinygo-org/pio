@@ -1,0 +1,39 @@
+; This PIO program is not compatible with RP2040
+.pio_version 1
+
+.program rxfifoput
+
+; Set TX FIFO to normal mode and set RX FIFO to PUT mode
+.fifo txput
+
+; Set all of the RX FIFO elements to zero
+; ISR is the only source that can write to the RX FIFO
+mov isr, NULL
+set y, 3
+
+zero_loop:
+    mov rxfifo[y], isr
+    jmp y--, zero_loop
+
+.wrap_target
+
+; Set x to uint32 max so we can use it as an inverted-bit counter
+mov x, ~NULL
+
+count:
+    ; Write the inverted value of x to the RX FIFO
+    mov isr, ~x
+    mov rxfifo[0], isr
+    ; Decrement x (incrementing the inverted value)
+    jmp x--, count
+
+.wrap
+
+% go {
+//go:build rp2350
+package main
+
+import (
+    pio "github.com/tinygo-org/pio/rp2-pio"
+)
+%}
