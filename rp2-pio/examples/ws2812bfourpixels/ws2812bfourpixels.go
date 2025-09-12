@@ -15,7 +15,7 @@ import (
 var ws2812Pin string
 
 /*
-NeoSimple is a toy implementation of a NeoPixel library using the
+WS2812bFourPixels is a toy implementation of a NeoPixel library using the
 new PIO FJOIN_RX_GET mode introduced with the RP2350.
 
 It supports a string of up to 4 NeoPixels, using the RX FIFO to persistently
@@ -25,12 +25,12 @@ be updated at any time using the ns.SetRGB(), ns.SetRGBW(), ns.SetRaw(), and
 ns.SetColor() methods. These methods use the StateMachine.SetRxFIFOAt()
 method to update the color data in the RX FIFO.
 
-NeoSimple supports both RGB and RGBW modes, RGB using the NewNeoSimpleRGB()
-function as shown here and RGBW using the NewNeoSimpleRGBW() function.
+WS2812bFourPixels supports both RGB and RGBW modes, RGB using the NewWS2812bFourPixelsRGB()
+function as shown here and RGBW using the NewWS2812bFourPixelsRGBW() function.
 
 This example package can be flashed, specifying the GPIO number via the -ldflags
 flag like so:
-tinygo flash -target=$TARGET_NAME -ldflags "-X main.ws2812Pin=$GPIO_NUMBER" ./examples/neosimple/
+tinygo flash -target=$TARGET_NAME -ldflags "-X main.ws2812Pin=$GPIO_NUMBER" ./examples/ws2812bfourpixels/
 */
 func main() {
 	pinNum, err := strconv.Atoi(ws2812Pin)
@@ -40,7 +40,7 @@ func main() {
 	}
 	Pio := pio.PIO0
 	sm, _ := Pio.ClaimStateMachine()
-	ns, err := piolib.NewNeoSimpleRGB(sm, machine.Pin(pinNum))
+	ns, err := piolib.NewWS2812bFourPixelsRGB(sm, machine.Pin(pinNum))
 	if err != nil {
 		panic(err.Error())
 	}

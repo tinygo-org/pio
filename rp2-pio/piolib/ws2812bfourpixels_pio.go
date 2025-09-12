@@ -5,17 +5,17 @@ package piolib
 import (
     pio "github.com/tinygo-org/pio/rp2-pio"
 )
-// neosimple
+// ws2812bfourpixels
 
-const neosimpleWrapTarget = 0
-const neosimpleWrap = 8
+const ws2812bfourpixelsWrapTarget = 0
+const ws2812bfourpixelsWrap = 8
 
-const neosimpleCyclesPerBit = 10
-const neosimpleT1 = 2
-const neosimpleT2 = 5
-const neosimpleT3 = 3
+const ws2812bfourpixelsCyclesPerBit = 10
+const ws2812bfourpixelsT1 = 2
+const ws2812bfourpixelsT2 = 5
+const ws2812bfourpixelsT3 = 3
 
-var neosimpleInstructions = []uint16{
+var ws2812bfourpixelsInstructions = []uint16{
 		//     .wrap_target
 		0x8090, //  0: mov    osr, rxfifo[y]  side 0     
 		0x6221, //  1: out    x, 1            side 0 [2] 
@@ -28,10 +28,10 @@ var neosimpleInstructions = []uint16{
 		0x0f47, //  8: jmp    x--, 7          side 0 [15]
 		//     .wrap
 }
-const neosimpleOrigin = -1
-func neosimpleProgramDefaultConfig(offset uint8) pio.StateMachineConfig {
+const ws2812bfourpixelsOrigin = -1
+func ws2812bfourpixelsProgramDefaultConfig(offset uint8) pio.StateMachineConfig {
 	cfg := pio.DefaultStateMachineConfig()
-	cfg.SetWrap(offset+neosimpleWrapTarget, offset+neosimpleWrap)
+	cfg.SetWrap(offset+ws2812bfourpixelsWrapTarget, offset+ws2812bfourpixelsWrap)
 	cfg.SetSidesetParams(1, false, false)
 	return cfg;
 }

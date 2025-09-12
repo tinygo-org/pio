@@ -4,7 +4,7 @@
 ; RP2350+
 .pio_version 1
 
-.program neosimple
+.program ws2812bfourpixels
 
 ; Set TX FIFO to normal mode and RX FIFO to GET mode for RX FIFO random reads.
 ; The RX FIFO is where pixel data is stored for repeat use.
