@@ -44,7 +44,7 @@ func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, e
 	cfg := spi3wProgramDefaultConfig(offset)
 	cfg.SetOutPins(dio, 1)
 	cfg.SetSetPins(dio, 1)
-	cfg.SetInPins(dio)
+	cfg.SetInPins(dio, 1)
 	cfg.SetSidesetPins(clk)
 	cfg.SetOutShift(false, true, 32)
 	cfg.SetInShift(false, true, 32)

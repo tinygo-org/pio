@@ -48,7 +48,7 @@ func (sm StateMachine) StateMachineIndex() uint8 { return sm.index }
 
 // IsValid returns true if state machine is a valid instance.
 func (sm StateMachine) IsValid() bool {
-	return sm.pio != nil && (sm.pio.hw == rp.PIO0 || sm.pio.hw == rp.PIO1) && sm.index <= 3
+	return sm.isValid()
 }
 
 // Init initializes the state machine
@@ -109,15 +109,7 @@ func (sm StateMachine) ClkDivRestart() {
 
 // SetConfig applies state machine configuration to a state machine
 func (sm StateMachine) SetConfig(cfg StateMachineConfig) {
-	sm.PIO().BlockIndex() // Panic if PIO or state machine not at valid offset.
-	if sm.index > 3 {
-		panic(badStateMachineIndex)
-	}
-	hw := sm.HW()
-	hw.CLKDIV.Set(cfg.ClkDiv)
-	hw.EXECCTRL.Set(cfg.ExecCtrl)
-	hw.SHIFTCTRL.Set(cfg.ShiftCtrl)
-	hw.PINCTRL.Set(cfg.PinCtrl)
+	sm.setConfig(cfg)
 }
 
 // SetClkDiv sets the clock divider for the state machine from a whole and fractional part where:
@@ -202,6 +194,18 @@ func (sm StateMachine) ClearFIFOs() {
 	// FIFOs are flushed when this bit is changed. Xoring twice returns bit to original state.
 	xorBits(shiftctl, rp.PIO0_SM0_SHIFTCTRL_FJOIN_RX_Msk)
 	xorBits(shiftctl, rp.PIO0_SM0_SHIFTCTRL_FJOIN_RX_Msk)
+}
+
+// GetRxFIFOAt reads data from the RX FIFO at a specific index.
+// Requires FifoJoinRxPut mode to be enabled, RP2350-only.
+func (sm StateMachine) GetRxFIFOAt(fifoIndex int) uint32 {
+	return sm.getRxFIFOAt(fifoIndex)
+}
+
+// SetRxFIFOAt writes data to the RX FIFO at a specific index.
+// Requires FifoJoinRxGet mode to be enabled, RP2350-only.
+func (sm StateMachine) SetRxFIFOAt(data uint32, fifoIndex int) {
+	sm.setRxFIFOAt(data, fifoIndex)
 }
 
 // Exec will immediately execute an instruction on the state machine

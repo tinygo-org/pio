@@ -1,0 +1,64 @@
+; This PIO program takes pixel data for up to 4 NeoPixels (ws2812b LEDs) and sends
+; it out on repeat with no intervention needed except to change the pixel colors.
+
+; RP2350+
+.pio_version 1
+
+.program ws2812bfourpixels
+
+; Set TX FIFO to normal mode and RX FIFO to GET mode for RX FIFO random reads.
+; The RX FIFO is where pixel data is stored for repeat use.
+.fifo txget
+
+; Using side-set for the signal pin
+.side_set 1
+
+.define public CyclesPerBit T1+T2+T3
+.define public T1 2  ; beginning cycles
+.define public T2 5  ; middle cycles, high for 1, low for 0
+.define public T3 3  ; end cycles
+; Using the Adafruit library's timing here. It's further
+; from the spec than the raspi/pico-examples timing (3, 3, 4),
+; but should have wider hardware compatibility.
+; Works out to 7H/3L cycles for 1 and 2H/8L cycles for 0
+; 800kHz bit period * 10 cycles per bit = 8 MHz PIO clock
+;
+; Ref:
+; https://github.com/adafruit/Adafruit_NeoPixel/blob/1.15.1/rp2040_pio.h#L19-L21
+; https://github.com/raspberrypi/pico-examples/blob/sdk-2.2.0/pio/ws2812/ws2812.pio#L15-L17
+
+.wrap_target
+
+pixelloop:
+    mov osr, rxfifo[y]  side 0          ; Load the pixel data from RX FIFO into OSR
+
+bitloop:
+    out x, 1            side 0 [T3 - 1] ; End of bit/pre-first bit (pull the next)
+    jmp !x do_zero      side 1 [T1 - 1] ; Beginning
+do_one:
+    jmp !osre bitloop   side 1 [T2 - 1] ; Middle of 1 bit
+do_zero:
+    jmp !osre bitloop   side 0 [T2 - 1] ; Middle of 0 bit
+    jmp y-- pixelloop   side 0          ; Decrement our FIFO index to get the next pixel
+
+finalize:
+    ; Before the color data is applied there needs to be a 50us+ pause
+    ; for the messages to "latch."
+    set x, 31           side 0 [15]
+
+delayloop:
+    ; If not for the delay loop required, resetting the y value would be unnecessary.
+    ; Only the last two y bits are referenced when used as the rxfifo index.
+    set y, 3            side 0 [15]
+    jmp x--, delayloop  side 0 [15]
+
+.wrap
+
+% go {
+//go:build rp2350
+package piolib
+
+import (
+    pio "github.com/tinygo-org/pio/rp2-pio"
+)
+%}

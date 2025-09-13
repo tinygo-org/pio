@@ -37,6 +37,8 @@ type StateMachineConfig struct {
 	ShiftCtrl uint32
 	// State machine pin control.
 	PinCtrl uint32
+	// GPIO pin index, for accessing GPIOs 32 and above
+	GPIOBase uint32
 }
 
 // SetClkDivIntFrac sets the clock divider for the state
@@ -150,12 +152,21 @@ func (cfg *StateMachineConfig) SetSetPins(base machine.Pin, count uint8) {
 		(uint32(count) << rp.PIO0_SM0_PINCTRL_SET_COUNT_Pos)
 }
 
+const (
+	// RP2350-only, redefined here for RP2040 compatibility.
+	pio0_SM0_SHIFTCTRL_IN_COUNT_Msk uint32 = 0x1f
+)
+
 // SetInPins in a state machine configuration. Can overlap with OUT, SET and SIDESET pins.
 //
+// On RP2350, pin count sets remaining bits to 0 in instructions such as `MOV x, PINS` that
+// would otherwise return a full 32-bit value of pin states. On RP2040 this has no effect.
 // Remember to also set the pindir of the pin(s).
-func (cfg *StateMachineConfig) SetInPins(base machine.Pin) {
-	checkPinBaseAndCount(base, 1)
+func (cfg *StateMachineConfig) SetInPins(base machine.Pin, count uint8) {
+	checkPinBaseAndCount(base, count)
 	cfg.PinCtrl = (cfg.PinCtrl & ^uint32(rp.PIO0_SM0_PINCTRL_IN_BASE_Msk)) | (uint32(base) << rp.PIO0_SM0_PINCTRL_IN_BASE_Pos)
+	// Set pin count. These bits are unused on RP2040
+	cfg.ShiftCtrl = (cfg.ShiftCtrl & ^pio0_SM0_SHIFTCTRL_IN_COUNT_Msk) | uint32(count)
 }
 
 // SetJmpPin sets the gpio pin to use as the source for a `jmp pin` instruction.
@@ -169,6 +180,9 @@ func (cfg *StateMachineConfig) SetJmpPin(pin machine.Pin) {
 //   - hasEnablePin true to enable auxiliary OUT enable pin.
 //   - enable pin for auxiliary OUT enable.
 func (cfg *StateMachineConfig) SetOutSpecial(sticky, hasEnablePin bool, enable machine.Pin) {
+	if hasEnablePin {
+		checkPinBaseAndCount(enable, 1)
+	}
 	cfg.ExecCtrl = (cfg.ExecCtrl &
 		^uint32(rp.PIO0_SM0_EXECCTRL_OUT_STICKY_Msk|rp.PIO0_SM0_EXECCTRL_INLINE_OUT_EN_Msk|
 			rp.PIO0_SM0_EXECCTRL_OUT_EN_SEL_Msk)) |
@@ -204,6 +218,16 @@ const (
 	FifoJoinTx
 	// FifoJoinRx joins the RX and TX FIFOs into a single RX FIFO of depth 8.
 	FifoJoinRx
+	// FifoJoinRxGet disables the RX FIFO, but enables random reads from the state
+	// machine and random writes from the system (for implementing control registers).
+	FifoJoinRxGet
+	// FifoJoinRxPut disables the RX FIFO, but enables random writes from the state
+	// machine and random reads from the system (for implementing status registers).
+	FifoJoinRxPut
+	// FifoJoinRxPutGet disables and disables all system access to the RX FIFO, but
+	// enables both random reads and random writes from the state machine, effectively
+	// adding four additional scratch registers that have no side-effects.
+	FifoJoinRxPutGet
 )
 
 // MOV status types.
@@ -214,13 +238,33 @@ const (
 	MovStatusRxLessthan
 )
 
-// SetFIFOJoin Setup the FIFO joining in a state machine configuration.
+const (
+	fifoJoinMask = rp.PIO0_SM0_SHIFTCTRL_FJOIN_TX_Msk | rp.PIO0_SM0_SHIFTCTRL_FJOIN_RX_Msk |
+		pio0_SM0_SHIFTCTRL_FJOIN_RX_PUT_Msk | pio0_SM0_SHIFTCTRL_FJOIN_RX_GET_Msk
+
+	// RP2350-only, redefined here for RP2040 compatibility
+	pio0_SM0_SHIFTCTRL_FJOIN_RX_PUT_Msk uint32 = 0x8000
+	pio0_SM0_SHIFTCTRL_FJOIN_RX_GET_Msk uint32 = 0x4000
+	pio0_SM0_SHIFTCTRL_FJOIN_RX_GET_Pos uint32 = 14 // 0xe
+)
+
+// SetFIFOJoin sets FIFO joining or RX FIFO random access on a state machine.
 func (cfg *StateMachineConfig) SetFIFOJoin(join FifoJoin) {
-	if join > FifoJoinRx {
+	if join > FifoJoinRxPutGet {
 		panic("SetFIFOJoin: join")
 	}
-	cfg.ShiftCtrl = (cfg.ShiftCtrl & ^uint32(rp.PIO0_SM0_SHIFTCTRL_FJOIN_TX_Msk|rp.PIO0_SM0_SHIFTCTRL_FJOIN_RX_Msk)) |
-		(uint32(join) << rp.PIO0_SM0_SHIFTCTRL_FJOIN_TX_Pos)
+
+	var newBits uint32
+	switch join {
+	case FifoJoinRx, FifoJoinTx:
+		newBits = uint32(join&0b11) << rp.PIO0_SM0_SHIFTCTRL_FJOIN_TX_Pos
+	case FifoJoinRxGet, FifoJoinRxPut, FifoJoinRxPutGet:
+		// These bits are unused on RP2040 and will have no effect.
+		newBits = (uint32(join-FifoJoinRx) & 0b11) << pio0_SM0_SHIFTCTRL_FJOIN_RX_GET_Pos
+	default:
+		// No FIFO joining or random access, so we leave all the FJOIN bits cleared.
+	}
+	cfg.ShiftCtrl = (cfg.ShiftCtrl & ^fifoJoinMask) | newBits
 }
 
 func boolToBit(b bool) uint32 {

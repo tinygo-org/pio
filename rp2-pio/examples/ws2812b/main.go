@@ -2,16 +2,28 @@ package main
 
 import (
 	"machine"
+	"strconv"
 	"time"
 
 	pio "github.com/tinygo-org/pio/rp2-pio"
 	"github.com/tinygo-org/pio/rp2-pio/piolib"
 )
 
+var ws2812Pin string
+
+/*
+This example package can be flashed, specifying the GPIO number via the -ldflags
+flag like so:
+tinygo flash -target=$TARGET_NAME -ldflags "-X main.ws2812Pin=$GPIO_NUMBER" ./examples/ws2812b/
+*/
 func main() {
-	const ws2812Pin = machine.GP16
+	pinNum, err := strconv.Atoi(ws2812Pin)
+	if err != nil {
+		println("Invalid pin number: " + ws2812Pin)
+		pinNum = 16
+	}
 	sm, _ := pio.PIO0.ClaimStateMachine()
-	ws, err := piolib.NewWS2812B(sm, ws2812Pin)
+	ws, err := piolib.NewWS2812B(sm, machine.Pin(pinNum))
 	if err != nil {
 		panic(err.Error())
 	}

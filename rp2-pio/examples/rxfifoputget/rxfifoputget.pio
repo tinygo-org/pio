@@ -1,0 +1,28 @@
+; This PIO program is not compatible with RP2040
+.pio_version 1
+
+.program rxfifoputget
+
+; Set RX FIFO to PUTGET mode
+.fifo putget
+
+.wrap_target
+
+; Do something to fill the ISR here
+
+mov rxfifo[0], isr ; Save ISR to the RX FIFO
+
+mov osr, rxfifo[0] ; Copy the saved ISR to the OSR
+
+; Do something with the OSR here
+
+.wrap
+
+% go {
+//go:build rp2350
+package main
+
+import (
+    pio "github.com/tinygo-org/pio/rp2-pio"
+)
+%}
