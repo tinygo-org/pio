@@ -93,7 +93,7 @@ func encodeInstrAndSrcDest(instr uint16, dest SrcDest, value uint8) uint16 {
 }
 
 func EncodeDelay(cycles uint8) uint16 {
-	return 0b11111 & (uint16(cycles) << 8)
+	return uint16(0b11111&cycles) << 8
 }
 
 func EncodeSideSet(bitCount, value uint8) uint16 {
