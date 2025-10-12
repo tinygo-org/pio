@@ -25,10 +25,10 @@ func main() {
 	blinkPinForever(Pio.StateMachine(2), offset, machine.GPIO11, 1)
 }
 
-func blinkPinForever(sm pio.StateMachine, offset uint8, pin machine.Pin, freq uint) {
+func blinkPinForever(sm pio.StateMachine, offset uint8, pin machine.Pin, freq uint32) {
 	blinkProgramInit(sm, offset, pin)
-	const clockFreq = 125000000
+	clockFreq := machine.CPUFrequency()
 	sm.SetEnabled(true)
 	println("Blinking", int(pin), "at", freq, "Hz")
-	sm.TxPut(uint32(clockFreq / (2 * freq)))
+	sm.TxPut(uint32(clockFreq/(2*freq)) - 3)
 }
