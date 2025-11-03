@@ -17,6 +17,7 @@ var (
 	errDMAUnavail = errors.New("piolib:DMA channel unavailable")
 )
 
+//go:generate pioasm -o go parallel6.pio         parallel6_pio.go
 //go:generate pioasm -o go parallel8.pio         parallel8_pio.go
 //go:generate pioasm -o go pulsar.pio            pulsar_pio.go
 //go:generate pioasm -o go spi.pio               spi_pio.go

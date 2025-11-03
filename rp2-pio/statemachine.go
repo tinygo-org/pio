@@ -167,6 +167,17 @@ func (sm StateMachine) TxFIFOLevel() uint32 {
 	return (sm.pio.hw.FLEVEL.Get() >> uint32(bitoffs)) & mask
 }
 
+// IsTxStalled returns true if state machine has stalled.
+// This value is sticky so it must be cleared with [StateMachine.ClearTxStalled] after reading true to be reset.
+func (sm StateMachine) HasTxStalled() bool {
+	return sm.pio.hw.FDEBUG.HasBits(1 << (rp.PIO0_FDEBUG_TXSTALL_Pos + sm.index))
+}
+
+// ClearTxStalled clears the value of tx stall. See [StateMachine.HasTxStalled].
+func (sm StateMachine) ClearTxStalled() {
+	sm.pio.hw.FDEBUG.Set(1 << (rp.PIO0_FDEBUG_TXSTALL_Pos + sm.index))
+}
+
 // IsTxFIFOEmpty returns true if state machine's TX FIFO is empty.
 func (sm StateMachine) IsTxFIFOEmpty() bool {
 	return (sm.pio.hw.FSTAT.Get() & (1 << (rp.PIO0_FSTAT_TXEMPTY_Pos + sm.index))) != 0
