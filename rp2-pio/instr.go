@@ -5,6 +5,87 @@ import (
 	"math"
 )
 
+// 5 bits of delay/sideset.
+const delaySidesetbits = 0b1_1111 << 8
+
+// Assembler provides a fluent API for programming PIO
+// within the Go language. Here's an example Parallel API
+// with a variable bus width:
+//
+//	// Translation of below program:
+//	// 0: out    pins, <npins>   side 0
+//	// 1: nop                    side 1
+//	// 2: nop                    side 0
+//	var program = [3]uint16{
+//		asm.Out(pio.SrcDestPins, cfg.BusWidth).Side(0).Encode(),
+//		asm.Nop().Side(1).Encode(),
+//		asm.Nop().Side(0).Encode(),
+//	}
+type Assembler struct {
+	SidesetBits uint8
+}
+
+type instruction struct {
+	instr uint16
+	asm   Assembler
+}
+
+func (instr instruction) Encode() uint16 {
+	return instr.instr
+}
+
+func (instr instruction) Side(value uint8) instruction {
+	instr.instr &^= instr.asm.sidesetbits()
+	instr.instr |= EncodeSideSet(instr.asm.SidesetBits, value) // TODO: panic on bit overflow.
+	return instr
+}
+
+func (instr instruction) Delay(cycles uint8) instruction {
+	instr.instr &^= instr.asm.delaybits()
+	instr.instr |= EncodeDelay(cycles) // TODO: panic on bit overflow due to sideset bits excess.
+	return instr
+}
+
+func (asm Assembler) sidesetbits() uint16 {
+	return delaySidesetbits & (uint16(0b111) << (13 - asm.SidesetBits))
+}
+
+func (asm Assembler) delaybits() uint16 {
+	return delaySidesetbits & (0b11111 << (8 - asm.SidesetBits))
+}
+
+func (asm Assembler) instr(instr uint16) instruction {
+	return instruction{instr: instr, asm: asm}
+}
+
+func (asm Assembler) Out(dest SrcDest, value uint8) instruction {
+	return asm.instr(EncodeOut(dest, value))
+}
+
+func (asm Assembler) Nop() instruction {
+	return asm.instr(EncodeNOP())
+}
+
+func (asm Assembler) Jmp(addr uint8, cond JmpCond) instruction {
+	return asm.instr(EncodeJmp(addr, cond))
+}
+
+func (asm Assembler) In(src SrcDest, value uint8) instruction {
+	return asm.instr(EncodeIn(src, value))
+}
+
+func (asm Assembler) Pull(ifEmpty, block bool) instruction {
+	return asm.instr(EncodePull(ifEmpty, block))
+}
+
+func (asm Assembler) Push(ifFull, block bool) instruction {
+	return asm.instr(EncodePush(ifFull, block))
+}
+
+func (asm Assembler) Mov(dest, src SrcDest) instruction {
+	return asm.instr(EncodeMov(dest, src))
+}
+
 // InstrKind is a enum for the PIO instruction type. It only represents the kind of
 // instruction. It cannot store the arguments.
 type InstrKind uint8

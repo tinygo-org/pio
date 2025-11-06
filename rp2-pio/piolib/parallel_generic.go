@@ -8,13 +8,14 @@ import (
 	pio "github.com/tinygo-org/pio/rp2-pio"
 )
 
-type ParallelGeneric struct {
+// Parallel implements a parallel bus of arbitrary number of data lines (up to 32).
+type Parallel struct {
 	sm      pio.StateMachine
 	progOff uint8
 	dma     dmaChannel
 }
 
-type ParallelGenericConfig struct {
+type ParallelConfig struct {
 	// Baud determines the clock speed of the parallel bus.
 	Baud uint32
 	// Clock is the single clock pin for the parallel bus.
@@ -30,13 +31,16 @@ type ParallelGenericConfig struct {
 	BitsPerPull uint8
 }
 
-func NewParallelGeneric(sm pio.StateMachine, cfg ParallelGenericConfig) (*ParallelGeneric, error) {
+func NewParallel(sm pio.StateMachine, cfg ParallelConfig) (*Parallel, error) {
 	const sideSetBitCount = 1
 	const programOrigin = -1
-	var program = [3]uint16{ // modifying this length means yoy
-		pio.EncodeOut(pio.SrcDestOSR, cfg.BusWidth) | pio.EncodeSideSet(sideSetBitCount, 0), //  0: out    pins, <npins>   side 0
-		pio.EncodeNOP() | pio.EncodeSideSet(sideSetBitCount, 1),                             //  1: nop                    side 1
-		pio.EncodeNOP() | pio.EncodeSideSet(sideSetBitCount, 0),                             //  2: nop                    side 0
+	asm := pio.Assembler{
+		SidesetBits: sideSetBitCount,
+	}
+	var program = [3]uint16{
+		asm.Out(pio.SrcDestPins, cfg.BusWidth).Side(0).Encode(), //  0: out    pins, <npins>   side 0
+		asm.Nop().Side(1).Encode(),                              //  1: nop                    side 1
+		asm.Nop().Side(0).Encode(),                              //  2: nop                    side 0
 	}
 	maxBaud := math.MaxUint32 / uint32(len(program))
 	if cfg.Baud > maxBaud {
@@ -69,6 +73,7 @@ func NewParallelGeneric(sm pio.StateMachine, cfg ParallelGenericConfig) (*Parall
 		pinMask |= 1 << pin
 		pin.Configure(pinCfg)
 	}
+	cfg.Clock.Configure(pinCfg)
 
 	scfg := pio.DefaultStateMachineConfig()
 	{ // parallelGenericProgramDefaultConfig
@@ -87,24 +92,24 @@ func NewParallelGeneric(sm pio.StateMachine, cfg ParallelGenericConfig) (*Parall
 	sm.SetPindirsMasked(pinMask, pinMask)
 	sm.Init(progOffset, scfg)
 	sm.SetEnabled(true)
-	return &ParallelGeneric{
+	return &Parallel{
 		sm:      sm,
 		progOff: progOffset,
 	}, nil
 }
 
 // IsEnabled returns true if the state machine on the Parallel6 is enabled and ready to transmit.
-func (p6 *ParallelGeneric) IsEnabled() bool {
+func (p6 *Parallel) IsEnabled() bool {
 	return p6.sm.IsEnabled()
 }
 
 // SetEnabled enables or disables the state machine.
-func (p6 *ParallelGeneric) SetEnabled(b bool) {
+func (p6 *Parallel) SetEnabled(b bool) {
 	p6.sm.SetEnabled(b)
 }
 
 // Tx32 pushes the uint32 buffer to the PIO Tx register.
-func (p6 *ParallelGeneric) Tx32(data []uint32) (err error) {
+func (p6 *Parallel) Tx32(data []uint32) (err error) {
 	p6.sm.ClearTxStalled()
 	if p6.IsDMAEnabled() {
 		err = p6.tx32DMA(data)
@@ -120,7 +125,7 @@ func (p6 *ParallelGeneric) Tx32(data []uint32) (err error) {
 	return nil
 }
 
-func (p6 *ParallelGeneric) tx32(data []uint32) error {
+func (p6 *Parallel) tx32(data []uint32) error {
 	i := 0
 	for i < len(data) {
 		if p6.sm.IsTxFIFOFull() {
@@ -133,15 +138,15 @@ func (p6 *ParallelGeneric) tx32(data []uint32) error {
 	return nil
 }
 
-func (p6 *ParallelGeneric) IsDMAEnabled() bool {
+func (p6 *Parallel) IsDMAEnabled() bool {
 	return p6.dma.helperIsEnabled()
 }
 
-func (p6 *ParallelGeneric) EnableDMA(enabled bool) error {
+func (p6 *Parallel) EnableDMA(enabled bool) error {
 	return p6.dma.helperEnableDMA(enabled)
 }
 
-func (p6 *ParallelGeneric) tx32DMA(data []uint32) error {
+func (p6 *Parallel) tx32DMA(data []uint32) error {
 	dreq := dmaPIO_TxDREQ(p6.sm)
 	err := p6.dma.Push32(&p6.sm.TxReg().Reg, data, dreq)
 	if err != nil {
