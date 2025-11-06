@@ -1,7 +1,9 @@
 package piolib
 
 import (
+	"errors"
 	"machine"
+	"math"
 
 	pio "github.com/tinygo-org/pio/rp2-pio"
 )
@@ -13,28 +15,47 @@ type ParallelGeneric struct {
 }
 
 type ParallelGenericConfig struct {
-	Baud      uint32
-	DataBase  machine.Pin
-	Clock     machine.Pin
-	BusWidth  uint8
-	ShiftBits uint8
-	// Maybe add Slewrate, drive strength among other parameters in future.
+	// Baud determines the clock speed of the parallel bus.
+	Baud uint32
+	// Clock is the single clock pin for the parallel bus.
+	Clock machine.Pin
+	// DataBase is the first of BusWidth consecutive pins defining the data lines of the parallel bus.
+	DataBase machine.Pin
+	// BusWidth is the amount of output pins of the parallel bus.
+	BusWidth uint8
+	// BitsPerPull sets the output shift register (OSR) pull threshold.
+	// It determines how many bits to send over bus per value pulled before discarding current OSR value
+	// and pulling a new value from TxFIFO.
+	// Must be a multiple of BusWidth.
+	BitsPerPull uint8
 }
 
 func NewParallelGeneric(sm pio.StateMachine, cfg ParallelGenericConfig) (*ParallelGeneric, error) {
-	sm.TryClaim()
-	Pio := sm.PIO()
-	whole, frac, err := pio.ClkDivFromFrequency(cfg.Baud, machine.CPUFrequency())
-	if err != nil {
-		return nil, err
-	}
 	const sideSetBitCount = 1
 	const programOrigin = -1
 	var program = [3]uint16{ // modifying this length means yoy
-		pio.EncodeOut(pio.SrcDestOSR, cfg.ShiftBits) | pio.EncodeSideSet(sideSetBitCount, 0), //  0: out    pins, <shift>   side 0
-		pio.EncodeNOP() | pio.EncodeSideSet(sideSetBitCount, 1),                              //  1: nop                    side 1
-		pio.EncodeNOP() | pio.EncodeSideSet(sideSetBitCount, 0),                              //  2: nop                    side 0
+		pio.EncodeOut(pio.SrcDestOSR, cfg.BusWidth) | pio.EncodeSideSet(sideSetBitCount, 0), //  0: out    pins, <npins>   side 0
+		pio.EncodeNOP() | pio.EncodeSideSet(sideSetBitCount, 1),                             //  1: nop                    side 1
+		pio.EncodeNOP() | pio.EncodeSideSet(sideSetBitCount, 0),                             //  2: nop                    side 0
 	}
+	maxBaud := math.MaxUint32 / uint32(len(program))
+	if cfg.Baud > maxBaud {
+		return nil, errors.New("max baud for parallel exceeded")
+	} else if cfg.BitsPerPull%cfg.BusWidth != 0 {
+		return nil, errors.New("bits per pull must be multiple of bus width")
+	} else if cfg.BitsPerPull < cfg.BusWidth {
+		return nil, errors.New("bits per pull must be greater or equal to bus width")
+	} else if cfg.BusWidth == 0 {
+		return nil, errors.New("zero bus width")
+	}
+	piofreq := cfg.Baud * uint32(len(program))
+	whole, frac, err := pio.ClkDivFromFrequency(piofreq, machine.CPUFrequency())
+	if err != nil {
+		return nil, err
+	}
+
+	sm.TryClaim()
+	Pio := sm.PIO()
 	progOffset, err := Pio.AddProgram(program[:], programOrigin)
 	if err != nil {
 		return nil, err
@@ -56,7 +77,7 @@ func NewParallelGeneric(sm pio.StateMachine, cfg ParallelGenericConfig) (*Parall
 	}
 
 	scfg.SetOutPins(cfg.DataBase, cfg.BusWidth)
-	scfg.SetOutShift(true, true, uint16(cfg.ShiftBits))
+	scfg.SetOutShift(true, true, uint16(cfg.BitsPerPull))
 	scfg.SetSidesetPins(cfg.Clock)
 
 	scfg.SetClkDivIntFrac(whole, frac)
