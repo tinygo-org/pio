@@ -31,7 +31,7 @@ func NewParallelGeneric(sm pio.StateMachine, cfg ParallelGenericConfig) (*Parall
 	const sideSetBitCount = 1
 	const programOrigin = -1
 	var program = [3]uint16{ // modifying this length means yoy
-		pio.EncodeOut(pio.SrcDestOSR, cfg.ShiftBits) | pio.EncodeSideSet(sideSetBitCount, 0), //  0: out    pins, 6         side 0
+		pio.EncodeOut(pio.SrcDestOSR, cfg.ShiftBits) | pio.EncodeSideSet(sideSetBitCount, 0), //  0: out    pins, <shift>   side 0
 		pio.EncodeNOP() | pio.EncodeSideSet(sideSetBitCount, 1),                              //  1: nop                    side 1
 		pio.EncodeNOP() | pio.EncodeSideSet(sideSetBitCount, 0),                              //  2: nop                    side 0
 	}
