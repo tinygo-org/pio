@@ -187,6 +187,17 @@ func (sm StateMachine) IsRxFIFOFull() bool {
 	return (sm.pio.hw.FSTAT.Get() & (1 << (rp.PIO0_FSTAT_RXFULL_Pos + sm.index))) != 0
 }
 
+// IsTxStalled returns true if state machine has stalled.
+// This value is sticky so it must be cleared with [StateMachine.ClearTxStalled] after reading true to be reset.
+func (sm StateMachine) HasTxStalled() bool {
+	return sm.pio.hw.FDEBUG.HasBits(1 << (rp.PIO0_FDEBUG_TXSTALL_Pos + sm.index))
+}
+
+// ClearTxStalled clears the value of tx stall. See [StateMachine.HasTxStalled].
+func (sm StateMachine) ClearTxStalled() {
+	sm.pio.hw.FDEBUG.Set(1 << (rp.PIO0_FDEBUG_TXSTALL_Pos + sm.index))
+}
+
 // ClearFIFOs clears the TX and RX FIFOs of a state machine.
 func (sm StateMachine) ClearFIFOs() {
 	hw := sm.HW()

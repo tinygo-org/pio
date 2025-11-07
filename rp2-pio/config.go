@@ -23,6 +23,17 @@ func DefaultStateMachineConfig() StateMachineConfig {
 	return cfg
 }
 
+// DefaultStateMachineConfig is a facilitator method to produce a config for a PIO state machine given the program produced by the same assembler.
+// It is equivalent to the code produced by pioasm in _pio.go files.
+func (asm Assembler) DefaultStateMachineConfig(progOffset uint8, program []uint16) StateMachineConfig {
+	cfg := DefaultStateMachineConfig()
+	cfg.SetWrap(progOffset, progOffset+uint8(len(program))-1)
+	if asm.SidesetBits > 0 {
+		cfg.SetSidesetParams(asm.SidesetBits, false, false)
+	}
+	return cfg
+}
+
 // StateMachineConfig holds the configuration for a PIO state
 // machine.
 //
