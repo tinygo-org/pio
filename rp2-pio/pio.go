@@ -172,7 +172,7 @@ func (pio *PIO) ClearProgramSection(offset, len uint8) {
 	for i := offset; i < offset+len; i++ {
 		// We encode trap instructions to prevent undefined behaviour if
 		// a state machine is currently using the program memory.
-		hw.INSTR_MEM[i].Set(uint32(encodeTRAP(offset)))
+		hw.INSTR_MEM[i].Set(uint32(AssemblerV0{}.Jmp(offset, JmpAlways).Encode()))
 	}
 	pio.usedSpaceMask &^= uint32((1<<len)-1) << offset
 }
