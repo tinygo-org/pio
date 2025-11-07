@@ -44,8 +44,7 @@ func NewI2S(sm pio.StateMachine, data, clockAndNext machine.Pin) (*I2S, error) {
 	pinMask := uint32(1<<data) | uint32(0b11<<clockAndNext)
 	sm.SetPindirsMasked(pinMask, pinMask)
 	sm.SetPinsMasked(0, pinMask)
-
-	sm.Exec(pio.EncodeJmp(offset+i2soffset_entry_point, pio.JmpAlways))
+	sm.Jmp(offset+i2soffset_entry_point, pio.JmpAlways)
 
 	i2s := &I2S{
 		sm:     sm,

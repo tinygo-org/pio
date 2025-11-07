@@ -34,7 +34,7 @@ type ParallelConfig struct {
 func NewParallel(sm pio.StateMachine, cfg ParallelConfig) (*Parallel, error) {
 	const sideSetBitCount = 1
 	const programOrigin = -1
-	asm := pio.Assembler{
+	asm := pio.AssemblerV0{
 		SidesetBits: sideSetBitCount,
 	}
 	var program = [3]uint16{

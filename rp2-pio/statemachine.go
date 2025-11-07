@@ -8,6 +8,9 @@ import (
 	"unsafe"
 )
 
+// assm is the default assembler used for state machine manipulation. No sidesetting nor delays.
+var assm AssemblerV0
+
 // StateMachine represents one of the four state machines in a PIO
 type StateMachine struct {
 	// The pio containing this state machine
@@ -84,7 +87,7 @@ func (sm StateMachine) Init(initialPC uint8, cfg StateMachineConfig) {
 
 	sm.Restart()
 	sm.ClkDivRestart()
-	sm.Exec(EncodeJmp(initialPC, JmpAlways))
+	sm.Exec(assm.Jmp(initialPC, JmpAlways).Encode())
 }
 
 // SetEnabled controls whether the state machine is running.
@@ -278,7 +281,7 @@ func (sm StateMachine) setPinExec(dest SrcDest, valueMask, pinMask uint32) {
 					uint32(i)<<rp.PIO0_SM0_PINCTRL_SET_BASE_Pos,
 			)
 			value := 0x1 & uint8(valueMask>>i)
-			sm.Exec(EncodeSet(dest, value))
+			sm.Exec(assm.Set(dest, value).Encode())
 		}
 	} else {
 		for pinMask != 0 {
@@ -291,7 +294,7 @@ func (sm StateMachine) setPinExec(dest SrcDest, valueMask, pinMask uint32) {
 			)
 
 			value := 0x1 & uint8(valueMask>>base)
-			sm.Exec(EncodeSet(dest, value))
+			sm.Exec(assm.Set(dest, value).Encode())
 			pinMask &= pinMask - 1
 		}
 	}
@@ -337,14 +340,15 @@ func (sm StateMachine) GetY() uint32 {
 
 func (sm StateMachine) setDst(dst SrcDest, value uint32) {
 	const bitCount = 32
-	instr := EncodeOut(dst, bitCount)
+
+	instr := assm.Out(dst, bitCount).Encode()
 	sm.TxPut(value)
 	sm.Exec(instr)
 }
 
 func (sm StateMachine) getDst(dst SrcDest) uint32 {
 	const bitCount = 32
-	instr := EncodeIn(dst, bitCount)
+	instr := assm.In(dst, bitCount).Encode()
 	sm.Exec(instr)
 	return sm.RxGet()
 }
@@ -352,7 +356,7 @@ func (sm StateMachine) getDst(dst SrcDest) uint32 {
 // Jmp sets the program counter of a state machine to a PIO program address given a condition.
 // The state machine should be halted beforehand.
 func (sm StateMachine) Jmp(toAddr uint8, cond JmpCond) {
-	sm.Exec(EncodeJmp(toAddr, cond))
+	sm.Exec(assm.Jmp(toAddr, cond).Encode())
 }
 
 const (

@@ -85,7 +85,7 @@ func (p *Pulsar) Stop() {
 	p.sm.ClearFIFOs()
 	p.sm.Restart()
 	p.sm.ClkDivRestart()
-	p.sm.Exec(pio.EncodeJmp(p.offsetPlusOne-1, pio.JmpAlways))
+	p.sm.Jmp(p.offsetPlusOne-1, pio.JmpAlways)
 	p.sm.SetEnabled(true)
 }
 
