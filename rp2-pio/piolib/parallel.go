@@ -75,11 +75,7 @@ func NewParallel(sm pio.StateMachine, cfg ParallelConfig) (*Parallel, error) {
 	}
 	cfg.Clock.Configure(pinCfg)
 
-	scfg := pio.DefaultStateMachineConfig()
-	{ // parallelGenericProgramDefaultConfig
-		scfg.SetWrap(progOffset+0, progOffset+uint8(len(program))-1)
-		scfg.SetSidesetParams(1, false, false)
-	}
+	scfg := asm.DefaultStateMachineConfig(progOffset, program[:])
 
 	scfg.SetOutPins(cfg.DataBase, cfg.BusWidth)
 	scfg.SetOutShift(true, true, uint16(cfg.BitsPerPull))
