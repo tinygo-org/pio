@@ -254,17 +254,17 @@ func makePinmask(base, count, bit uint8) (valMask, pinMask uint32) {
 // This method repeatedly reconfigures the state machines pins.
 // Use this method as convenience to set initial pin states BEFORE running state machine.
 func (sm StateMachine) SetPinsMasked(valueMask, pinMask uint32) {
-	sm.setPinExec(SrcDestPins, valueMask, pinMask)
+	sm.setPinExec(SetDestPins, valueMask, pinMask)
 }
 
 // SetPindirsMasked sets the pin directions (input/output) on multiple pins for
 // the PIO instance. This method repeatedly reconfigures the state machines pins.
 // Use this method as convenience to set initial pin states BEFORE running state machine.
 func (sm StateMachine) SetPindirsMasked(dirMask, pinMask uint32) {
-	sm.setPinExec(SrcDestPinDirs, dirMask, pinMask)
+	sm.setPinExec(SetDestPindirs, dirMask, pinMask)
 }
 
-func (sm StateMachine) setPinExec(dest SrcDest, valueMask, pinMask uint32) {
+func (sm StateMachine) setPinExec(dest SetDest, valueMask, pinMask uint32) {
 	hw := sm.HW()
 	pinctrlSaved := hw.PINCTRL.Get()
 	execctrlSaved := hw.EXECCTRL.Get()
@@ -318,27 +318,27 @@ func (sm StateMachine) SetWrap(target, wrap uint8) {
 
 // SetX sets the X register of a state machine. The state machine should be halted beforehand.
 func (sm StateMachine) SetX(value uint32) {
-	sm.setDst(SrcDestX, value)
+	sm.setDst(OutDestX, value)
 }
 
 // SetY sets the Y register of a state machine. The state machine should be halted beforehand.
 func (sm StateMachine) SetY(value uint32) {
-	sm.setDst(SrcDestY, value)
+	sm.setDst(OutDestY, value)
 }
 
 // GetX gets the X register of a state machine. The state machine should be halted beforehand.
 // Calling GetX during execution may desync the state machine.
 func (sm StateMachine) GetX() uint32 {
-	return sm.getDst(SrcDestX)
+	return sm.getDst(InSrcX)
 }
 
 // GetY gets the Y register of a state machine. The state machine should be halted beforehand.
 // Calling GetY during execution may desync the state machine.
 func (sm StateMachine) GetY() uint32 {
-	return sm.getDst(SrcDestY)
+	return sm.getDst(InSrcY)
 }
 
-func (sm StateMachine) setDst(dst SrcDest, value uint32) {
+func (sm StateMachine) setDst(dst OutDest, value uint32) {
 	const bitCount = 32
 
 	instr := assm.Out(dst, bitCount).Encode()
@@ -346,7 +346,7 @@ func (sm StateMachine) setDst(dst SrcDest, value uint32) {
 	sm.Exec(instr)
 }
 
-func (sm StateMachine) getDst(dst SrcDest) uint32 {
+func (sm StateMachine) getDst(dst InSrc) uint32 {
 	const bitCount = 32
 	instr := assm.In(dst, bitCount).Encode()
 	sm.Exec(instr)
