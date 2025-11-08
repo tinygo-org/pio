@@ -45,12 +45,12 @@ func (instr instructionV0) majorbits() uint16 {
 	return instr.instr & _INSTR_BITS_Msk
 }
 
-func (asm AssemblerV0) instrArgs(instr uint16, arg1 uint8, arg2 uint8) instructionV0 {
-	return asm.instr(instr | (uint16(arg1) << 5) | uint16(arg2&0x1f))
+func (asm AssemblerV0) instrArgs(instr uint16, arg1_5b uint8, arg2 uint8) instructionV0 {
+	return asm.instr(instr | (uint16(arg1_5b) << 5) | uint16(arg2&0x1f))
 }
 
-func (asm AssemblerV0) instrSrcDest(instr uint16, srcDest SrcDest, value uint8) instructionV0 {
-	return asm.instrArgs(instr, uint8(srcDest)&7, value)
+func (asm AssemblerV0) instrSrcDest(instr uint16, srcDest uint8, value uint8) instructionV0 {
+	return asm.instrArgs(instr, srcDest&7, value)
 }
 
 // Encode returns the finalized assembled instruction ready to be stored to the PIO program memory and used by a PIO state machine.
@@ -131,14 +131,14 @@ func (asm AssemblerV0) WaitGPIO(polarity bool, pin uint8) instructionV0 {
 
 // Shift Bit count bits from Source into the Input Shift Register (ISR). Shift direction is configured for each state machine by
 // SHIFTCTRL_IN_SHIFTDIR. Additionally, increase the input shift count by Bit count, saturating at 32.
-func (asm AssemblerV0) In(src SrcDest, value uint8) instructionV0 {
-	return asm.instrSrcDest(_INSTR_BITS_IN, src, value)
+func (asm AssemblerV0) In(src InSrc, value uint8) instructionV0 {
+	return asm.instrSrcDest(_INSTR_BITS_IN, uint8(src), value)
 }
 
 // Shift Bit count bits out of the Output Shift Register (OSR), and write those bits to Destination. Additionally, increase the
 // output shift count by Bit count, saturating at 32.
-func (asm AssemblerV0) Out(dest SrcDest, value uint8) instructionV0 {
-	return asm.instrSrcDest(_INSTR_BITS_OUT, dest, value)
+func (asm AssemblerV0) Out(dest OutDest, value uint8) instructionV0 {
+	return asm.instrSrcDest(_INSTR_BITS_OUT, uint8(dest), value)
 }
 
 // Push the contents of the ISR into the RX FIFO, as a single 32-bit word. Clear ISR to all-zeroes.
@@ -160,18 +160,18 @@ func (asm AssemblerV0) Pull(ifEmpty, block bool) instructionV0 {
 }
 
 // Mov copies data from src to dest.
-func (asm AssemblerV0) Mov(dest, src SrcDest) instructionV0 {
-	return asm.instrSrcDest(_INSTR_BITS_MOV, dest, uint8(src)&7)
+func (asm AssemblerV0) Mov(dest MovDest, src MovSrc) instructionV0 {
+	return asm.instrSrcDest(_INSTR_BITS_MOV, uint8(dest), uint8(src)&7)
 }
 
 // MovInvertBits does a Mov but inverting the resulting bits.
-func (asm AssemblerV0) MovInvert(dest, src SrcDest) instructionV0 {
-	return asm.instrSrcDest(_INSTR_BITS_MOV, dest, (1<<3)|uint8(src&7))
+func (asm AssemblerV0) MovInvert(dest MovDest, src MovSrc) instructionV0 {
+	return asm.instrSrcDest(_INSTR_BITS_MOV, uint8(dest), (1<<3)|uint8(src&7))
 }
 
 // MovReverse does a Mov but reversing the order of the resulting bits.
-func (asm AssemblerV0) MovReverse(dest, src SrcDest) instructionV0 {
-	return asm.instrSrcDest(_INSTR_BITS_MOV, dest, (2<<3)|uint8(src&7))
+func (asm AssemblerV0) MovReverse(dest MovDest, src MovSrc) instructionV0 {
+	return asm.instrSrcDest(_INSTR_BITS_MOV, uint8(dest), (2<<3)|uint8(src&7))
 }
 
 // IRQSet sets the IRQ flag selected by irqIndex argument.
@@ -185,27 +185,27 @@ func (asm AssemblerV0) IRQClear(relative bool, irqIndex uint8) instructionV0 {
 }
 
 // Set writes an immediate value Data in range 0..31 to Destination.
-func (asm AssemblerV0) Set(dest SrcDest, value uint8) instructionV0 {
-	return asm.instrSrcDest(_INSTR_BITS_SET, dest, value)
+func (asm AssemblerV0) Set(dest SetDest, value uint8) instructionV0 {
+	return asm.instrSrcDest(_INSTR_BITS_SET, uint8(dest), value)
 }
 
 // Nop is pseudo instruction that lasts a single PIO cycle. Usually used for timings.
-func (asm AssemblerV0) Nop() instructionV0 { return asm.Mov(SrcDestY, SrcDestY) }
+func (asm AssemblerV0) Nop() instructionV0 { return asm.Mov(MovDestY, MovSrcY) }
 
 // InstrKind is a enum for the PIO instruction type. It only represents the kind of
 // instruction. It cannot store the arguments.
 type InstrKind uint8
 
 const (
-	InstrJMP InstrKind = iota
-	InstrWAIT
-	InstrIN
-	InstrOUT
-	InstrPUSH
-	InstrPULL
-	InstrMOV
-	InstrIRQ
-	InstrSET
+	InstrJMP  InstrKind = iota // jmp
+	InstrWAIT                  // wait
+	InstrIN                    // in
+	InstrOUT                   // out
+	InstrPUSH                  // push
+	InstrPULL                  // pull
+	InstrMOV                   // mov
+	InstrIRQ                   // irq
+	InstrSET                   // set
 )
 
 // This file contains the primitives for creating instructions dynamically
@@ -224,20 +224,68 @@ const (
 	_INSTR_BITS_Msk = 0xe000
 )
 
-type SrcDest uint8
+// OutDest encodes Out instruction data destination.
+type OutDest uint8
 
 const (
-	SrcDestPins    SrcDest = 0
-	SrcDestX       SrcDest = 1
-	SrcDestY       SrcDest = 2
-	SrcDestNull    SrcDest = 3
-	SrcDestPinDirs SrcDest = 4
-	SrcDestExecMov SrcDest = 4
-	SrcDestStatus  SrcDest = 5
-	SrcDestPC      SrcDest = 5
-	SrcDestISR     SrcDest = 6
-	SrcDestOSR     SrcDest = 7
-	SrcExecOut     SrcDest = 7
+	OutDestPins    OutDest = 0b000 // pins
+	OutDestX       OutDest = 0b001 // x
+	OutDestY       OutDest = 0b010 // y
+	OutDestNull    OutDest = 0b011 // null
+	OutDestPindirs OutDest = 0b100 // pindirs
+	OutDestPC      OutDest = 0b101 // pc
+	OutDestISR     OutDest = 0b110 // isr
+	OutDestExec    OutDest = 0b111 // exec
+)
+
+// InSrc encodes In instruction data source.
+type InSrc uint8
+
+const (
+	InSrcPins InSrc = 0b000 // pins
+	InSrcX    InSrc = 0b001 // x
+	InSrcY    InSrc = 0b010 // y
+	InSrcNull InSrc = 0b011 // null
+	InSrcISR  InSrc = 0b110 // isr
+	InSrcOSR  InSrc = 0b111 // osr
+)
+
+// SetDest encodes Set instruction data destination.
+type SetDest uint8
+
+const (
+	SetDestPins    SetDest = 0b000 // pins
+	SetDestX       SetDest = 0b001 // x
+	SetDestY       SetDest = 0b010 // y
+	SetDestPindirs SetDest = 0b100 // pindirs
+)
+
+// MovSrc encodes Mov instruction data source.
+type MovSrc uint8
+
+const (
+	MovSrcPins   MovSrc = 0b000 // pins
+	MovSrcX      MovSrc = 0b001 // x
+	MovSrcY      MovSrc = 0b010 // y
+	MovSrcNull   MovSrc = 0b011 // null
+	MovSrcStatus MovSrc = 0b101 // status
+	MovSrcISR    MovSrc = 0b110 // isr
+	MovSrcOSR    MovSrc = 0b111 // osr
+)
+
+// MovDest encodes Mov instruction data destination.
+type MovDest uint8
+
+const (
+	MovDestPins MovDest = 0b000 // pins
+	MovDestX    MovDest = 0b001 // x
+	MovDestY    MovDest = 0b010 // y
+	// MovDestPindirs was introduced in PIO version 1. Not available on RP2040
+	MovDestPindirs MovDest = 0b011 // pindirs
+	MovDestExec    MovDest = 0b100 // exec
+	MovDestPC      MovDest = 0b101 // pc
+	MovDestISR     MovDest = 0b110 // isr
+	MovDestOSR     MovDest = 0b111 // osr
 )
 
 type JmpCond uint8

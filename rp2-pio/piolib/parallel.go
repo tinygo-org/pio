@@ -38,7 +38,7 @@ func NewParallel(sm pio.StateMachine, cfg ParallelConfig) (*Parallel, error) {
 		SidesetBits: sideSetBitCount,
 	}
 	var program = [3]uint16{
-		asm.Out(pio.SrcDestPins, cfg.BusWidth).Side(0).Encode(), //  0: out    pins, <npins>   side 0
+		asm.Out(pio.OutDestPins, cfg.BusWidth).Side(0).Encode(), //  0: out    pins, <npins>   side 0
 		asm.Nop().Side(1).Encode(),                              //  1: nop                    side 1
 		asm.Nop().Side(0).Encode(),                              //  2: nop                    side 0
 	}

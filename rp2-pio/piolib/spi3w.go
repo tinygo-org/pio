@@ -258,7 +258,7 @@ func (spi *SPI3w) prepTx(readbits, writebits uint32) {
 	spi.sm.SetX(writebits)
 	spi.sm.SetY(readbits)
 	var asm pio.AssemblerV0
-	spi.sm.Exec(asm.Set(pio.SrcDestPinDirs, 1).Encode()) // Set Pindir out.
+	spi.sm.Exec(asm.Set(pio.SetDestPindirs, 1).Encode()) // Set Pindir out.
 	spi.sm.Jmp(spi.offset+spi3wWrapTarget, pio.JmpAlways)
 
 	spi.sm.SetEnabled(true)
