@@ -314,16 +314,18 @@ const (
 type IRQIndexMode uint8
 
 const (
+	// Direct: the three LSBs are used directly to index the IRQ flags in this PIO block.
+	IRQDirect IRQIndexMode = 0b00 // direct
 	// Prev: the instruction references an IRQ flag from the next-lower-numbered PIO in the system, wrapping to
 	// the highest-numbered PIO if this is PIO0. Available on RP2350 only.
-	IRQPrev IRQIndexMode = 0b01
+	IRQPrev IRQIndexMode = 0b01 // prev
 	// Rel: the state machine ID (0…3) is added to the IRQ flag index, by way of modulo-4 addition on the two
 	// LSBs. For example, state machine 2 with a flag value of '0x11' will wait on flag 3, and a flag value of '0x13' will
 	// wait on flag 1. This allows multiple state machines running the same program to synchronise with each other.
-	IRQRel IRQIndexMode = 0b10
+	IRQRel IRQIndexMode = 0b10 // rel
 	// Next: the instruction references an IRQ flag from the next-higher-numbered PIO in the system, wrapping to
 	// PIO0 if this is the highest-numbered PIO. Available on RP2350 only.
-	IRQNext IRQIndexMode = 0b11
+	IRQNext IRQIndexMode = 0b11 // next
 )
 
 // EncodeInstr encodes an arbitrary PIO instruction with the given arguments.

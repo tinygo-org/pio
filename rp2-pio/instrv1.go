@@ -81,7 +81,7 @@ func (asm AssemblerV1) MovReverse(dest MovDest, src MovSrc) instructionV0 {
 // MovOSRFromRx reads the selected RX FIFO entry into the OSR. The PIO state machine can read the FIFO entries in any order, indexed
 // either by the Y register, or an immediate Index in the instruction. Requires the SHIFTCTRL_FJOIN_RX_GET configuration field
 // to be set, otherwise its operation is undefined.
-//   - If IdxI (index by immediate) is set, the RX FIFO’s registers are indexed by the two least-significant bits of the Index
+//   - If idxByImmediate (index by immediate) is set, the RX FIFO’s registers are indexed by the two least-significant bits of the Index
 //     operand. Otherwise, they are indexed by the two least-significant bits of the Y register. When IdxI is clear, all non-zero
 //     values of Index are reserved encodings, and their operation is undefined.
 func (asm AssemblerV1) MovOSRFromRx(idxByImmediate bool, RxFifoIndex uint8) instructionV0 {
@@ -104,6 +104,27 @@ func (asm AssemblerV1) MovISRToRx(idxByImmediate bool, RxFifoIndex uint8) instru
 // Set instruction unchanged from [AssemblerV0.Set].
 func (asm AssemblerV1) Set(dest SetDest, value uint8) instructionV0 {
 	return asm.v0().Set(dest, value)
+}
+
+// IRQSet sets the IRQ flag selected by irqIndex.
+func (asm AssemblerV1) IRQSet(irqIndex uint8, idxMode IRQIndexMode) instructionV0 {
+	return asm.irq(false, false, irqIndex, idxMode)
+}
+
+// IRQClear clears the IRQ flag selected by irqIndex argument. See [AssemblerV1.IRQSet].
+func (asm AssemblerV1) IRQClear(irqIndex uint8, idxMode IRQIndexMode) instructionV0 {
+	return asm.irq(true, false, irqIndex, idxMode)
+}
+
+// IRQWait sets the IRQ flag selected by irqIndex and waits for it to be cleared before proceeding.
+// If Wait is set, Delay cycles do not begin until after the wait period elapses.
+func (asm AssemblerV1) IRQWait(irqIndex uint8, idxMode IRQIndexMode) instructionV0 {
+	return asm.irq(false, true, irqIndex, idxMode)
+}
+
+func (asm AssemblerV1) irq(clear, wait bool, irqIndex uint8, idxMode IRQIndexMode) instructionV0 {
+	instr := _INSTR_BITS_IRQ | uint16(boolAsU8(clear))<<6 | uint16(boolAsU8(wait))<<6 | uint16(idxMode)<<3 | uint16(irqIndex&0b111)
+	return asm.v0().instr(instr)
 }
 
 // Nop instruction unchanged from [AssemblerV0.Nop].
