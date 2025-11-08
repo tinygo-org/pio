@@ -1,3 +1,5 @@
+//go:build rp2350
+
 package main
 
 import (
