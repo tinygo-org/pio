@@ -123,7 +123,7 @@ func (asm AssemblerV1) IRQWait(irqIndex uint8, idxMode IRQIndexMode) instruction
 }
 
 func (asm AssemblerV1) irq(clear, wait bool, irqIndex uint8, idxMode IRQIndexMode) instructionV0 {
-	instr := _INSTR_BITS_IRQ | uint16(boolAsU8(clear))<<6 | uint16(boolAsU8(wait))<<6 | uint16(idxMode)<<3 | uint16(irqIndex&0b111)
+	instr := _INSTR_BITS_IRQ | uint16(boolAsU8(clear))<<6 | uint16(boolAsU8(wait))<<5 | uint16(idxMode&0b11)<<3 | uint16(irqIndex&0b111)
 	return asm.v0().instr(instr)
 }
 
