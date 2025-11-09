@@ -4,7 +4,6 @@ import (
 	"errors"
 	"machine"
 	"math"
-	"unsafe"
 
 	pio "github.com/tinygo-org/pio/rp2-pio"
 )
@@ -107,17 +106,17 @@ func (p6 *Parallel) SetEnabled(b bool) {
 
 // Tx32 pushes the uint32 buffer to the PIO Tx register.
 func (p6 *Parallel) Tx32(data []uint32) (err error) {
-	return txParallel(p6, data)
+	return helperPushUntilStall(p6.sm, p6.dma, data)
 }
 
 // Tx16 pushes the uint16 buffer to the PIO Tx register.
 func (p6 *Parallel) Tx16(data []uint16) (err error) {
-	return txParallel(p6, data)
+	return helperPushUntilStall(p6.sm, p6.dma, data)
 }
 
 // Tx16 pushes the uint8 buffer to the PIO Tx register.
 func (p6 *Parallel) Tx8(data []uint8) (err error) {
-	return txParallel(p6, data)
+	return helperPushUntilStall(p6.sm, p6.dma, data)
 }
 
 func (p6 *Parallel) IsDMAEnabled() bool {
@@ -126,32 +125,4 @@ func (p6 *Parallel) IsDMAEnabled() bool {
 
 func (p6 *Parallel) EnableDMA(enabled bool) error {
 	return p6.dma.helperEnableDMA(enabled)
-}
-
-func txParallel[T uint8 | uint16 | uint32](p6 *Parallel, buf []T) (err error) {
-	p6.sm.ClearTxStalled()
-	if p6.IsDMAEnabled() {
-		dreq := dmaPIO_TxDREQ(p6.sm)
-		err = dmaPush(p6.dma, (*T)(unsafe.Pointer(p6.sm.TxReg())), buf, dreq)
-		if err != nil {
-			return err
-		}
-	} else {
-		i := 0
-		for i < len(buf) {
-			if p6.sm.IsTxFIFOFull() {
-				gosched()
-				continue
-			}
-			p6.sm.TxPut(uint32(buf[i]))
-			i++
-		}
-	}
-	if err != nil {
-		return err
-	}
-	for !p6.sm.HasTxStalled() {
-		gosched() // Block until empty.
-	}
-	return nil
 }
