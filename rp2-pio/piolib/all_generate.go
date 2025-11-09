@@ -78,9 +78,6 @@ func helperPushUntilStall[T uint8 | uint16 | uint32](sm pio.StateMachine, dma dm
 	if dma.helperIsEnabled() {
 		dreq := dmaPIO_TxDREQ(sm)
 		err = dmaPush(dma, (*T)(unsafe.Pointer(sm.TxReg())), buf, dreq)
-		if err != nil {
-			return err
-		}
 	} else {
 		i := 0
 		for i < len(buf) {
