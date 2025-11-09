@@ -17,7 +17,7 @@ type ST7789 struct {
 	rd machine.Pin
 	bl machine.Pin
 
-	pl *piolib.Parallel8Tx
+	pl *piolib.Parallel
 
 	// General Display Stuff
 	width    uint16
@@ -148,12 +148,12 @@ func (st *ST7789) configureDisplayRotation(rotation Rotation) {
 func (st *ST7789) command(command byte, data []byte) {
 	st.dc.Low()
 	st.cs.Low()
-	st.pl.Write([]byte{command})
+	st.pl.Tx8([]byte{command})
 	// st.writeBlockingParallel([]byte{command}, 1)
 
 	if len(data) > 0 {
 		st.dc.High()
-		st.pl.Write(data)
+		st.pl.Tx8(data)
 		// st.writeBlockingParallel(data, len(data))
 	}
 	st.cs.High()
