@@ -122,6 +122,7 @@ func (r *RMII) mdioClockOut(bit bool) {
 	r.mdc.Low()
 	time.Sleep(time.Microsecond)
 	r.mdio.Set(bit)
+	time.Sleep(time.Microsecond) // Allow data line to settle
 	r.mdc.High()
 	time.Sleep(time.Microsecond)
 }
@@ -136,6 +137,13 @@ func (r *RMII) mdioClockIn() bool {
 	return bit
 }
 
+func (r *RMII) mdCfg() {
+	r.mdc.High()
+	r.mdio.High()
+	r.mdio.Configure(machine.PinConfig{Mode: machine.PinOutput})
+	r.mdc.Configure(machine.PinConfig{Mode: machine.PinOutput})
+}
+
 // MDIORead reads a 16-bit register from the PHY via MDIO.
 // Implements IEEE 802.3 MDIO frame format for read operation.
 // Reference: netif_rmii_ethernet_mdio_read() from rmii_ethernet.c
@@ -143,6 +151,7 @@ func (r *RMII) MDIORead(phyAddr uint8, regAddr uint8) (uint16, error) {
 	if phyAddr > 31 || regAddr > 31 {
 		return 0, errors.New("MDIO address out of range")
 	}
+	r.mdCfg()
 
 	// Preamble: 32 bits of '1'
 	for i := 0; i < 32; i++ {
@@ -169,20 +178,15 @@ func (r *RMII) MDIORead(phyAddr uint8, regAddr uint8) (uint16, error) {
 
 	// Turnaround: switch MDIO to input, read 2 bits (should be Z0)
 	r.mdio.Configure(machine.PinConfig{Mode: machine.PinInput})
-	r.mdioClockIn() // Z bit
-	r.mdioClockIn() // 0 bit
+	r.mdioClockOut(false) // Z bit
+	r.mdioClockOut(false) // 0 bit
 
 	// Read 16 data bits MSB first
 	var data uint16
 	for i := 15; i >= 0; i-- {
-		if r.mdioClockIn() {
-			data |= 1 << uint(i)
-		}
+		data <<= 1
+		data |= uint16(b2u8(r.mdioClockIn()))
 	}
-
-	// Release MDIO bus
-	r.mdio.Configure(machine.PinConfig{Mode: machine.PinOutput})
-	r.mdio.High()
 
 	return data, nil
 }
@@ -194,9 +198,7 @@ func (r *RMII) MDIOWrite(phyAddr uint8, regAddr uint8, value uint16) error {
 	if phyAddr > 31 || regAddr > 31 {
 		return errors.New("MDIO address out of range")
 	}
-
-	// Ensure MDIO is output
-	r.mdio.Configure(machine.PinConfig{Mode: machine.PinOutput})
+	r.mdCfg()
 
 	// Preamble: 32 bits of '1'
 	for i := 0; i < 32; i++ {
@@ -230,8 +232,8 @@ func (r *RMII) MDIOWrite(phyAddr uint8, regAddr uint8, value uint16) error {
 		r.mdioClockOut((value>>uint(i))&0x01 != 0)
 	}
 
-	// Release MDIO to high impedance
-	r.mdio.High()
+	// Release MDIO bus to high impedance
+	r.mdio.Configure(machine.PinConfig{Mode: machine.PinInput})
 
 	return nil
 }
@@ -400,4 +402,11 @@ func (r *RMII) RxBuffer() []byte {
 // TxBuffer returns a reference to the internal TX buffer for direct access.
 func (r *RMII) TxBuffer() []byte {
 	return r.txBuffer
+}
+
+func b2u8(b bool) uint8 {
+	if b {
+		return 1
+	}
+	return 0
 }
