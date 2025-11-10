@@ -91,15 +91,16 @@ func (r *RMII) DiscoverPHY() error {
 
 // InitPHY initializes the PHY with auto-negotiation settings.
 // Must be called after DiscoverPHY().
+// Reference: netif_rmii_ethernet_low_init() from rmii_ethernet.c
 func (r *RMII) InitPHY() error {
 	// Write to register 4 (Advertisement): 0x61
-	// This typically enables 10/100 half/full duplex advertisement
+	// Configure advertised capabilities (10/100 Mbps support)
 	if err := r.MDIOWrite(r.phyAddr, 4, 0x61); err != nil {
 		return err
 	}
 
 	// Write to register 0 (Control): 0x1000
-	// Enable auto-negotiation and restart it
+	// Enable auto-negotiation (bit 12)
 	if err := r.MDIOWrite(r.phyAddr, 0, 0x1000); err != nil {
 		return err
 	}
@@ -107,7 +108,7 @@ func (r *RMII) InitPHY() error {
 	return nil
 }
 
-// PHYAddr returns the discovered PHY address.
+// PHYAddr returns the discovered PHY address. Set after [RMII.DiscoverPHY] success.
 func (r *RMII) PHYAddr() uint8 {
 	return r.phyAddr
 }
@@ -118,24 +119,20 @@ func (r *RMII) PHYAddr() uint8 {
 
 // mdioClockOut outputs a bit on MDIO while pulsing MDC clock.
 func (r *RMII) mdioClockOut(bit bool) {
-	if bit {
-		r.mdio.High()
-	} else {
-		r.mdio.Low()
-	}
+	r.mdc.Low()
 	time.Sleep(time.Microsecond)
+	r.mdio.Set(bit)
 	r.mdc.High()
 	time.Sleep(time.Microsecond)
-	r.mdc.Low()
 }
 
 // mdioClockIn reads a bit from MDIO while pulsing MDC clock.
 func (r *RMII) mdioClockIn() bool {
+	r.mdc.Low()
 	time.Sleep(time.Microsecond)
 	r.mdc.High()
-	time.Sleep(time.Microsecond)
 	bit := r.mdio.Get()
-	r.mdc.Low()
+	time.Sleep(time.Microsecond)
 	return bit
 }
 
@@ -243,12 +240,13 @@ func (r *RMII) MDIOWrite(phyAddr uint8, regAddr uint8, value uint16) error {
 // Uses the polynomial 0xedb88320 (reversed representation).
 // Reference: netif_rmii_ethernet_crc() from rmii_ethernet.c
 func (r *RMII) CRC32(data []byte) uint32 {
+	const polynomial = 0xedb88320
 	crc := uint32(0xffffffff)
 	for _, b := range data {
 		crc ^= uint32(b)
 		for bit := 0; bit < 8; bit++ {
 			if crc&1 != 0 {
-				crc = (crc >> 1) ^ 0xedb88320
+				crc = (crc >> 1) ^ polynomial
 			} else {
 				crc = crc >> 1
 			}
@@ -305,7 +303,7 @@ func (r *RMII) TxFrame(frame []byte) error {
 	const preambleNibbles = 31
 	const sfdNibbles = 1
 	dataAndCrcLen := len(frame) + 4 // frame + 4 byte CRC
-	const ipgNibbles = 12
+	const ipgNibbles = 12 * 4       // 12 bytes * 4 nibbles per byte = 48
 
 	totalNibbles := preambleNibbles + sfdNibbles + (dataAndCrcLen * 4) + ipgNibbles
 

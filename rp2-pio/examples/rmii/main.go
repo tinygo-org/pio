@@ -2,7 +2,9 @@ package main
 
 import (
 	"machine"
+	"strconv"
 	"time"
+	"unsafe"
 
 	pio "github.com/tinygo-org/pio/rp2-pio"
 	"github.com/tinygo-org/pio/rp2-pio/piolib"
@@ -69,10 +71,10 @@ func main() {
 
 	// Print network configuration
 	println("\nNetwork Configuration:")
-	println("  MAC:", formatMAC(macAddr[:]))
-	println("  IP:", formatIP(ipAddr[:]))
-	println("  Netmask:", formatIP(netmask[:]))
-	println("  Gateway:", formatIP(gateway[:]))
+	println("  MAC:", string(appendHexSep(nil, macAddr[:], ':')))
+	println("  IP:", string(appendDecSep(nil, ipAddr[:], '.')))
+	println("  Netmask:", string(appendDecSep(nil, netmask[:], '.')))
+	println("  Gateway:", string(appendDecSep(nil, gateway[:], '.')))
 	println("\nHTTP server listening on port 80")
 
 	// Enable RX DMA with interrupt handling
@@ -138,8 +140,34 @@ func initRMII(Pio *pio.PIO) (*piolib.RMII, error) {
 	return rmii, nil
 }
 
+// Utility functions for formatting
+
+func formatHex16(val uint16) string {
+	fwd := []byte{'0', 'x'}
+	fwd = appendHex(fwd, byte(val>>8))
+	fwd = appendHex(fwd, byte(val))
+	return unsafe.String(&fwd[0], len(fwd))
+}
+
 // waitForLink waits for the PHY link to come up
 func waitForLink(rmii *piolib.RMII) {
+	println("Reading PHY registers for diagnostics...")
+
+	// Read PHY ID registers
+	id1, err1 := rmii.MDIORead(rmii.PHYAddr(), 2)
+	id2, err2 := rmii.MDIORead(rmii.PHYAddr(), 3)
+	if err1 == nil && err2 == nil {
+		println("  PHY ID1:", formatHex16(id1))
+		println("  PHY ID2:", formatHex16(id2))
+	}
+
+	// Read control register
+	ctrl, errCtrl := rmii.MDIORead(rmii.PHYAddr(), 0)
+	if errCtrl == nil {
+		println("  Control Reg (0):", formatHex16(ctrl))
+	}
+
+	attempt := 0
 	for {
 		// Read PHY Basic Status Register (register 1)
 		status, err := rmii.MDIORead(rmii.PHYAddr(), 1)
@@ -149,8 +177,25 @@ func waitForLink(rmii *piolib.RMII) {
 			continue
 		}
 
+		attempt++
+		if attempt%10 == 0 {
+			println("  Status Reg (1):", formatHex16(status), "- Link bit:", (status>>2)&1)
+
+			// Read more diagnostic info
+			if attempt%30 == 0 {
+				// Read auto-neg advertisement (reg 4)
+				anar, _ := rmii.MDIORead(rmii.PHYAddr(), 4)
+				println("  Auto-Neg Adv (4):", formatHex16(anar))
+
+				// Read auto-neg link partner (reg 5)
+				anlpar, _ := rmii.MDIORead(rmii.PHYAddr(), 5)
+				println("  Link Partner (5):", formatHex16(anlpar))
+			}
+		}
+
 		// Check link status bit (bit 2)
 		if status&0x04 != 0 {
+			println("  Link established! Final status:", formatHex16(status))
 			return
 		}
 
@@ -158,39 +203,31 @@ func waitForLink(rmii *piolib.RMII) {
 	}
 }
 
-// Utility functions for formatting
-
-func formatMAC(mac []byte) string {
-	if len(mac) != 6 {
-		return "invalid"
+func appendHexSep(dst, mac []byte, sep byte) []byte {
+	for i := range mac {
+		dst = appendHex(dst, mac[i])
+		if sep != 0 && i != len(mac)-1 {
+			dst = append(dst, sep)
+		}
 	}
-	return formatHex(mac[0]) + ":" + formatHex(mac[1]) + ":" + formatHex(mac[2]) + ":" +
-		formatHex(mac[3]) + ":" + formatHex(mac[4]) + ":" + formatHex(mac[5])
+	return dst
 }
 
-func formatIP(ip []byte) string {
-	if len(ip) != 4 {
-		return "invalid"
-	}
-	return formatDec(ip[0]) + "." + formatDec(ip[1]) + "." + formatDec(ip[2]) + "." + formatDec(ip[3])
-}
-
-func formatHex(b byte) string {
+func appendHex(dst []byte, b byte) []byte {
 	const hexChars = "0123456789abcdef"
-	return string([]byte{hexChars[b>>4], hexChars[b&0x0f]})
+	return append(dst, hexChars[b>>4], hexChars[b&0xf])
 }
 
-func formatDec(b byte) string {
-	if b == 0 {
-		return "0"
-	}
+func appendDec(dst []byte, b byte) []byte {
+	return strconv.AppendInt(dst, int64(b), 10)
+}
 
-	var buf [3]byte
-	i := 2
-	for b > 0 && i >= 0 {
-		buf[i] = '0' + (b % 10)
-		b /= 10
-		i--
+func appendDecSep(dst []byte, data []byte, sep byte) []byte {
+	for i := range data {
+		dst = appendDec(dst, data[i])
+		if sep != 0 && i != len(data)-1 {
+			dst = append(dst, sep)
+		}
 	}
-	return string(buf[i+1:])
+	return dst
 }
