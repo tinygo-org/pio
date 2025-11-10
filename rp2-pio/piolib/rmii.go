@@ -45,12 +45,6 @@ func NewRMII(smTx, smRx pio.StateMachine, cfg RMIIConfig) (*RMII, error) {
 		return nil, err
 	}
 
-	// Configure MDIO/MDC pins
-	cfg.MDIO.Configure(machine.PinConfig{Mode: machine.PinOutput})
-	cfg.MDC.Configure(machine.PinConfig{Mode: machine.PinOutput})
-	cfg.MDIO.High()
-	cfg.MDC.Low()
-
 	// Set default buffer sizes
 	rxBufSize := cfg.RxBufferSize
 	if rxBufSize == 0 {
@@ -70,6 +64,8 @@ func NewRMII(smTx, smRx pio.StateMachine, cfg RMIIConfig) (*RMII, error) {
 		txBuffer: make([]byte, txBufSize),
 	}
 
+	// Configure MDIO/MDC pins
+	// rmii.mdCfg()
 	return rmii, nil
 }
 
@@ -138,8 +134,8 @@ func (r *RMII) mdioClockIn() bool {
 }
 
 func (r *RMII) mdCfg() {
-	r.mdc.High()
-	r.mdio.High()
+	// r.mdc.High()
+	// r.mdio.High()
 	r.mdio.Configure(machine.PinConfig{Mode: machine.PinOutput})
 	r.mdc.Configure(machine.PinConfig{Mode: machine.PinOutput})
 }
