@@ -106,32 +106,17 @@ func (p6 *Parallel) SetEnabled(b bool) {
 
 // Tx32 pushes the uint32 buffer to the PIO Tx register.
 func (p6 *Parallel) Tx32(data []uint32) (err error) {
-	p6.sm.ClearTxStalled()
-	if p6.IsDMAEnabled() {
-		err = p6.tx32DMA(data)
-	} else {
-		err = p6.tx32(data)
-	}
-	if err != nil {
-		return err
-	}
-	for !p6.sm.HasTxStalled() {
-		gosched() // Block until empty.
-	}
-	return nil
+	return helperPushUntilStall(p6.sm, p6.dma, data)
 }
 
-func (p6 *Parallel) tx32(data []uint32) error {
-	i := 0
-	for i < len(data) {
-		if p6.sm.IsTxFIFOFull() {
-			gosched()
-			continue
-		}
-		p6.sm.TxPut(data[i])
-		i++
-	}
-	return nil
+// Tx16 pushes the uint16 buffer to the PIO Tx register.
+func (p6 *Parallel) Tx16(data []uint16) (err error) {
+	return helperPushUntilStall(p6.sm, p6.dma, data)
+}
+
+// Tx16 pushes the uint8 buffer to the PIO Tx register.
+func (p6 *Parallel) Tx8(data []uint8) (err error) {
+	return helperPushUntilStall(p6.sm, p6.dma, data)
 }
 
 func (p6 *Parallel) IsDMAEnabled() bool {
@@ -140,13 +125,4 @@ func (p6 *Parallel) IsDMAEnabled() bool {
 
 func (p6 *Parallel) EnableDMA(enabled bool) error {
 	return p6.dma.helperEnableDMA(enabled)
-}
-
-func (p6 *Parallel) tx32DMA(data []uint32) error {
-	dreq := dmaPIO_TxDREQ(p6.sm)
-	err := p6.dma.Push32(&p6.sm.TxReg().Reg, data, dreq)
-	if err != nil {
-		return err
-	}
-	return nil
 }

@@ -26,7 +26,13 @@ func main() {
 	println("Initializing Display")
 	const MHz = 1_000_000
 	sm, _ := pio.PIO0.ClaimStateMachine()
-	p8tx, err := piolib.NewParallel8Tx(sm, wrPin, db0Pin, 1*MHz)
+	p8tx, err := piolib.NewParallel(sm, piolib.ParallelConfig{
+		Baud:        1 * MHz,
+		Clock:       wrPin,
+		DataBase:    db0Pin,
+		BusWidth:    8,
+		BitsPerPull: 8,
+	})
 	if err != nil {
 		panic(err.Error())
 	}
@@ -44,7 +50,7 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	display.pl.Write([]byte("Hello World"))
+	display.pl.Tx8([]byte("Hello World"))
 	// Setup DMA
 	println("Setting Up DMA")
 	// display.pl.EnableDMA(2)

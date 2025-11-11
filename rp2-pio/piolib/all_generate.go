@@ -5,6 +5,9 @@ import (
 	"math"
 	"runtime"
 	"time"
+	"unsafe"
+
+	pio "github.com/tinygo-org/pio/rp2-pio"
 )
 
 const timeoutRetries = math.MaxUint16 * 8
@@ -66,4 +69,31 @@ func (ch *deadliner) setTimeout(timeout time.Duration) {
 			return
 		}
 	}
+}
+
+// helperPushUntilStall pushes buf data elements into TxReg through DMA if enabled or via [pio.StateMachine.TxPut] if dma disabled.
+// It blocks until TxStall flag is set in state machine FDEBUG register. TxStall flag cleared immediately on this function call.
+func helperPushUntilStall[T uint8 | uint16 | uint32](sm pio.StateMachine, dma dmaChannel, buf []T) (err error) {
+	sm.ClearTxStalled()
+	if dma.helperIsEnabled() {
+		dreq := dmaPIO_TxDREQ(sm)
+		err = dmaPush(dma, (*T)(unsafe.Pointer(sm.TxReg())), buf, dreq)
+	} else {
+		i := 0
+		for i < len(buf) {
+			if sm.IsTxFIFOFull() {
+				gosched()
+				continue
+			}
+			sm.TxPut(uint32(buf[i]))
+			i++
+		}
+	}
+	if err != nil {
+		return err
+	}
+	for !sm.HasTxStalled() {
+		gosched() // Block until empty.
+	}
+	return nil
 }
