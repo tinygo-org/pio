@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"machine"
 	"strconv"
 	"time"
@@ -40,73 +41,45 @@ var (
 )
 
 func main() {
+	cfg := piolib.RMIIConfig{
+		TxRx: piolib.RMIITxRxConfig{
+			TxPin:     pinTxBase,
+			RxPin:     pinRxBase,
+			CRSDVPin:  pinCRSDV,
+			RefClkPin: pinRefClk,
+		},
+		NoZMDIO:      false,
+		MDIO:         pinMDIO,
+		MDC:          pinMDC,
+		RxBufferSize: 2048,
+		TxBufferSize: 2048,
+	}
 	// Sleep to allow serial monitor to connect
 	time.Sleep(2 * time.Second)
-	println("RMII Ethernet HTTP Server")
-	println("========================")
-
-	// Initialize RMII interface
-	rmii, err := initRMII(pio.PIO0)
+	println("=== LAN 8720 RMII ===")
+	device, err := NewLAN8270(pio.PIO0, cfg)
 	if err != nil {
-		panic("Failed to initialize RMII: " + err.Error())
+		panic(err)
 	}
-
-	// Discover and initialize PHY
-	println("\nDiscovering PHY...")
-	if err := rmii.DiscoverPHY(); err != nil {
-		panic("PHY discovery failed: " + err.Error())
-	}
-	println("PHY found at address:", rmii.PHYAddr())
-
-	// Initialize PHY with auto-negotiation
-	println("Initializing PHY...")
-	if err := rmii.InitPHY(); err != nil {
-		panic("PHY initialization failed: " + err.Error())
-	}
-
-	// Wait for link to come up
-	println("Waiting for link...")
-	waitForLink(rmii)
-	println("Link is UP!")
-
-	// Print network configuration
-	println("\nNetwork Configuration:")
-	println("  MAC:", string(appendHexSep(nil, macAddr[:], ':')))
-	println("  IP:", string(appendDecSep(nil, ipAddr[:], '.')))
-	println("  Netmask:", string(appendDecSep(nil, netmask[:], '.')))
-	println("  Gateway:", string(appendDecSep(nil, gateway[:], '.')))
-	println("\nHTTP server listening on port 80")
-
-	// Enable RX DMA with interrupt handling
-	err = rmii.EnableDMA(true)
-	if err != nil {
-		panic("failed to enabled DMA:" + err.Error())
-	}
-
-	// Set up RX interrupt for frame detection
-	if err := rmii.EnableRxInterrupt(func(pin machine.Pin) {
-		rmii.OnRxComplete()
-	}); err != nil {
-		panic("Failed to enable RX interrupt: " + err.Error())
-	}
-
-	// Start RX DMA
-	go func() {
-		for {
-			if err := rmii.StartRxDMA(); err != nil {
-				println("RX DMA error:", err.Error())
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-	}()
-
-	// Initialize network stack
-
-	// Main network processing loop
-	println("\nStarting network stack...")
+	// Init Loop:
 	for {
-		time.Sleep(1 * time.Millisecond)
+		err = device.Init()
+		if err == nil {
+			break
+		}
+		println("init failed:", err.Error())
+		println("retrying soon...")
+		time.Sleep(6 * time.Second)
 	}
+	status, err := device.Status()
+	if err != nil {
+		panic("status: " + err.Error())
+	}
+	ctl, _ := device.BasicControl()
+	println("status", formatHex16(uint16(status)), "islinked", status.IsLinked())
+	println("regctl", formatHex16(uint16(ctl)), "isenabled", ctl.IsEnabled())
+	println("PHY ID1:", device.id1, "ID2:", device.id2)
+
 }
 
 // initRMII initializes the RMII interface with PIO and DMA
@@ -141,61 +114,130 @@ func initRMII(Pio *pio.PIO) (*piolib.RMII, error) {
 	return rmii, nil
 }
 
-// Utility functions for formatting
+const (
+	regBasicControl = 0x00
+	regBasicStatus  = 0x01
+	regPhyId1       = 0x02
+	regPhyId2       = 0x03
 
-// waitForLink waits for the PHY link to come up
-func waitForLink(rmii *piolib.RMII) {
-	println("Reading PHY registers for diagnostics...")
+	regAutoNegotiationAdvertisement      = 0x04
+	regAutoNegotiationLinkPartnerAbility = 0x05
+	regAutoNegotiationExpansion          = 0x05
+	regModeControlStatus                 = 0x11
+	regSpecialModes                      = 0x12
+	regSymbolErorCounter                 = 0x1a
+	regSpecialControlStatusIndications   = 0x1b
+	regIRQSourceFlag                     = 0x1d
+	regIRQMask                           = 0x1e
+	regPhySpecialScontrolStatus          = 0x1f
+)
 
-	// Read PHY ID registers
-	id1, err1 := rmii.MDIORead(rmii.PHYAddr(), 2)
-	id2, err2 := rmii.MDIORead(rmii.PHYAddr(), 3)
-	if err1 == nil && err2 == nil {
-		println("  PHY ID1:", formatHex16(id1))
-		println("  PHY ID2:", formatHex16(id2))
+type LAN8720 struct {
+	bus      *piolib.RMII
+	smiaddr  uint8
+	id1, id2 uint16
+}
+
+func NewLAN8270(Pio *pio.PIO, cfg piolib.RMIIConfig) (*LAN8720, error) {
+	smTx, err := Pio.ClaimStateMachine()
+	if err != nil {
+		return nil, err
 	}
-
-	// Read control register
-	ctrl, errCtrl := rmii.MDIORead(rmii.PHYAddr(), 0)
-	if errCtrl == nil {
-		println("  Control Reg (0):", formatHex16(ctrl))
+	smRx, err := Pio.ClaimStateMachine()
+	if err != nil {
+		return nil, err
 	}
+	// Configure RMII
 
-	attempt := 0
-	for {
-		// Read PHY Basic Status Register (register 1)
-		status, err := rmii.MDIORead(rmii.PHYAddr(), 1)
-		if err != nil {
-			println("Error reading PHY status:", err.Error())
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
+	rmii, err := piolib.NewRMII(smTx, smRx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &LAN8720{bus: rmii}, nil
+}
 
-		attempt++
-		if attempt%10 == 0 {
-			println("  Status Reg (1):", formatHex16(status), "- Link bit:", (status>>2)&1)
+type status uint16
+type control uint16
 
-			// Read more diagnostic info
-			if attempt%30 == 0 {
-				// Read auto-neg advertisement (reg 4)
-				anar, _ := rmii.MDIORead(rmii.PHYAddr(), 4)
-				println("  Auto-Neg Adv (4):", formatHex16(anar))
-
-				// Read auto-neg link partner (reg 5)
-				anlpar, _ := rmii.MDIORead(rmii.PHYAddr(), 5)
-				println("  Link Partner (5):", formatHex16(anlpar))
-			}
-		}
-
-		// Check link status bit (bit 2)
-		if status&0x04 != 0 {
-			println("  Link established! Final status:", formatHex16(status))
-			return
-		}
-
-		time.Sleep(100 * time.Millisecond)
+func (c *control) SetEnabled(b bool) {
+	*c &^= 1 << 15
+	if b {
+		*c |= 1 << 15
 	}
 }
+func (c control) IsEnabled() bool {
+	return c&(1<<15) != 0
+}
+
+func (s status) IsLinked() bool {
+	return s&(1<<2) != 0
+}
+
+func (lan *LAN8720) Status() (status, error) {
+	stat, err := lan.readReg(regBasicStatus)
+	return status(stat), err
+}
+
+func (lan *LAN8720) BasicControl() (control, error) {
+	ct, err := lan.readReg(regBasicControl)
+	return control(ct), err
+}
+
+func (lan *LAN8720) Init() error {
+	const maxAddr = 31
+	lan.smiaddr = 255
+	for addr := uint8(0); addr <= maxAddr; addr++ {
+		val, err := lan.bus.MDIORead(addr, 0)
+		if err != nil {
+			continue
+		}
+		if val != 0xffff && val != 0x0000 {
+			lan.smiaddr = addr
+			break
+		}
+		time.Sleep(150 * time.Microsecond)
+	}
+	if lan.smiaddr > maxAddr {
+		return errors.New("no PHY found via addr scanning")
+	}
+	ctl, err := lan.BasicControl()
+	if err != nil {
+		return errors.New("failed reading basic control: " + err.Error())
+	}
+	ctl.SetEnabled(true)
+	err = lan.writeReg(regBasicControl, uint16(ctl))
+	if err != nil {
+		return err
+	}
+	time.Sleep(50 * time.Millisecond)
+	ctl, err = lan.BasicControl()
+
+	if err != nil {
+		return err
+	} else if ctl.IsEnabled() {
+		println("want ctl bit 16, got:", formatHex16(uint16(ctl)))
+		return errors.New("lan8720 reset failed")
+	}
+	lan.id1, err = lan.readReg(regPhyId1)
+	if err != nil {
+		return err
+	}
+	lan.id2, err = lan.readReg(regPhyId2)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (lan *LAN8720) readReg(reg uint8) (uint16, error) {
+	return lan.bus.MDIORead(lan.smiaddr, reg)
+}
+
+func (lan *LAN8720) writeReg(reg uint8, value uint16) error {
+	return lan.bus.MDIOWrite(lan.smiaddr, reg, value)
+}
+
+// Utility functions for formatting
 
 func formatHex16(val uint16) string {
 	fwd := []byte{'0', 'x'}

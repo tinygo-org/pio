@@ -73,21 +73,21 @@ func NewRMII(smTx, smRx pio.StateMachine, cfg RMIIConfig) (*RMII, error) {
 	return rmii, nil
 }
 
-// DiscoverPHY scans MDIO addresses 0-31 to find a connected PHY.
-// Returns the PHY address or an error if no PHY is found.
-func (r *RMII) DiscoverPHY() error {
-	for addr := uint8(0); addr < 32; addr++ {
-		val, err := r.MDIORead(addr, 0)
-		if err != nil {
-			continue
-		}
-		if val != 0xffff && val != 0x0000 {
-			r.phyAddr = addr
-			return nil
-		}
-	}
-	return errors.New("no PHY found on MDIO bus")
-}
+// // DiscoverPHY scans MDIO addresses 0-31 to find a connected PHY.
+// // Returns the PHY address or an error if no PHY is found.
+// func (r *RMII) DiscoverPHY() error {
+// 	for addr := uint8(0); addr < 32; addr++ {
+// 		val, err := r.MDIORead(addr, 0)
+// 		if err != nil {
+// 			continue
+// 		}
+// 		if val != 0xffff && val != 0x0000 {
+// 			r.phyAddr = addr
+// 			return nil
+// 		}
+// 	}
+// 	return errors.New("no PHY found on MDIO bus")
+// }
 
 // InitPHY initializes the PHY with auto-negotiation settings.
 // Must be called after DiscoverPHY().
