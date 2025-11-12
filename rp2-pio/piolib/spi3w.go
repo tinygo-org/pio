@@ -19,9 +19,10 @@ type SPI3w struct {
 	dma    dmaChannel
 	offset uint8
 
-	statusEn   bool
-	lastStatus uint32
-	pinMask    uint32
+	statusEn          bool
+	programWrapTarget uint8
+	lastStatus        uint32
+	pinMask           uint32
 }
 
 func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, error) {
@@ -33,15 +34,42 @@ func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, e
 
 	// https://github.com/embassy-rs/embassy/blob/c4a8b79dbc927e46fcc71879673ad3410aa3174b/cyw43-pio/src/lib.rs#L90
 	sm.TryClaim() // SM should be claimed beforehand, we just guarantee it's claimed.
-
 	Pio := sm.PIO()
-	offset, err := Pio.AddProgram(spi3wInstructions, spi3wOrigin)
+	assm := pio.AssemblerV0{
+		SidesetBits: 1,
+	}
+	const (
+		origin   = -1
+		wloopOff = 0
+		rloopOff = 5
+		endOff   = 7
+	)
+	var program = [...]uint16{
+		//     .wrap_target
+		// write out x-1 bits.
+		wloopOff:// Write/Output loop.
+		assm.Out(pio.OutDestPins, 1).Side(0).Encode(), //  0: out    pins, 1         side 0
+		assm.Jmp(wloopOff, pio.JmpXNZeroDec).Side(1).Encode(), //  1: jmp    x--, 0          side 1
+		assm.Jmp(endOff, pio.JmpYZero).Side(0).Encode(),       //  2: jmp    !y, 7           side 0
+		assm.Set(pio.SetDestPindirs, 0).Side(0).Encode(),      //  3: set    pindirs, 0      side 0
+		assm.Nop().Side(0).Encode(),                           //  4: nop                    side 0
+		// read in y-1 bits.
+		rloopOff:// Read/input loop
+		assm.In(pio.InSrcPins, 1).Side(1).Encode(), // 5: in     pins, 1         side 1
+		assm.Jmp(rloopOff, pio.JmpYNZeroDec).Side(0).Encode(), //  6: jmp    y--, 5          side 0
+		// Wait for SPI packet on IRQ.
+		endOff:// Wait on input pin.
+		assm.WaitPin(true, 0).Side(0).Encode(), //  7: wait   1 pin, 0        side 0
+		assm.IRQSet(false, 0).Side(0).Encode(), //  8: irq    nowait 0        side 0
+	}
+	const a = len(program) - 1
+
+	offset, err := Pio.AddProgram(program[:], origin)
 	if err != nil {
 		return nil, err
 	}
-
+	cfg := assm.DefaultStateMachineConfig(offset, program[:])
 	// Configure state machine.
-	cfg := spi3wProgramDefaultConfig(offset)
 	cfg.SetOutPins(dio, 1)
 	cfg.SetSetPins(dio, 1)
 	cfg.SetInPins(dio, 1)
@@ -84,6 +112,8 @@ func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, e
 		sm:      sm,
 		offset:  offset,
 		pinMask: pinMask,
+
+		programWrapTarget: wloopOff,
 	}
 	return spiw, nil
 }
@@ -259,7 +289,7 @@ func (spi *SPI3w) prepTx(readbits, writebits uint32) {
 	spi.sm.SetY(readbits)
 	var asm pio.AssemblerV0
 	spi.sm.Exec(asm.Set(pio.SetDestPindirs, 1).Encode()) // Set Pindir out.
-	spi.sm.Jmp(spi.offset+spi3wWrapTarget, pio.JmpAlways)
+	spi.sm.Jmp(spi.offset+spi.programWrapTarget, pio.JmpAlways)
 
 	spi.sm.SetEnabled(true)
 }
