@@ -128,6 +128,7 @@ func initRMII(Pio *pio.PIO) (*piolib.RMII, error) {
 			CRSDVPin:  pinCRSDV,
 			RefClkPin: pinRefClk,
 		},
+		NoZMDIO:      false,
 		MDIO:         pinMDIO,
 		MDC:          pinMDC,
 		RxBufferSize: 2048,
@@ -141,13 +142,6 @@ func initRMII(Pio *pio.PIO) (*piolib.RMII, error) {
 }
 
 // Utility functions for formatting
-
-func formatHex16(val uint16) string {
-	fwd := []byte{'0', 'x'}
-	fwd = appendHex(fwd, byte(val>>8))
-	fwd = appendHex(fwd, byte(val))
-	return unsafe.String(&fwd[0], len(fwd))
-}
 
 // waitForLink waits for the PHY link to come up
 func waitForLink(rmii *piolib.RMII) {
@@ -201,6 +195,13 @@ func waitForLink(rmii *piolib.RMII) {
 
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+func formatHex16(val uint16) string {
+	fwd := []byte{'0', 'x'}
+	fwd = appendHex(fwd, byte(val>>8))
+	fwd = appendHex(fwd, byte(val))
+	return unsafe.String(&fwd[0], len(fwd))
 }
 
 func appendHexSep(dst, mac []byte, sep byte) []byte {

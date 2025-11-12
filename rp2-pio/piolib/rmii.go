@@ -15,6 +15,7 @@ import (
 // Inspired by Sandeep Mistry's implementation at https://github.com/sandeepmistry/pico-rmii-ethernet
 type RMII struct {
 	rxtx     RMIITxRx
+	zmdio    bool
 	mdio     machine.Pin
 	mdc      machine.Pin
 	phyAddr  uint8
@@ -35,6 +36,8 @@ type RMIIConfig struct {
 	RxBufferSize int
 	// TxBufferSize is the size of the transmit buffer (default 2048 if 0)
 	TxBufferSize int
+	// NoZMDIO avoids using high impedance Z level for HIGH pin state on MDIO as stated by RMII specification.
+	NoZMDIO bool
 }
 
 // NewRMII creates a new complete RMII interface with MDIO/MDC management.
@@ -62,6 +65,7 @@ func NewRMII(smTx, smRx pio.StateMachine, cfg RMIIConfig) (*RMII, error) {
 		rxDVPin:  cfg.TxRx.CRSDVPin,
 		rxBuffer: make([]byte, rxBufSize),
 		txBuffer: make([]byte, txBufSize),
+		zmdio:    cfg.NoZMDIO,
 	}
 
 	// Configure MDIO/MDC pins
@@ -117,10 +121,33 @@ func (r *RMII) PHYAddr() uint8 {
 func (r *RMII) mdioClockOut(bit bool) {
 	r.mdc.Low()
 	time.Sleep(time.Microsecond)
-	r.mdio.Set(bit)
-	time.Sleep(time.Microsecond) // Allow data line to settle
+	r.mdioSet(bit)
+	time.Sleep(time.Microsecond)
 	r.mdc.High()
 	time.Sleep(time.Microsecond)
+}
+
+func (r *RMII) mdioSet(b bool) {
+	if r.zmdio {
+		if b {
+			r.mdioZHigh()
+		} else {
+			r.mdioLow()
+		}
+	} else {
+		r.mdio.Set(b)
+	}
+}
+
+func (r *RMII) mdioZHigh() {
+	// RMII z pin level means high impedance, pull up resistor.
+	r.mdio.Configure(machine.PinConfig{Mode: machine.PinInputPullup})
+}
+
+func (r *RMII) mdioLow() {
+	// RMII 0 pin level sets as output
+	r.mdio.Low()
+	r.mdio.Configure(machine.PinConfig{Mode: machine.PinOutput})
 }
 
 // mdioClockIn reads a bit from MDIO while pulsing MDC clock.
@@ -135,7 +162,6 @@ func (r *RMII) mdioClockIn() bool {
 
 func (r *RMII) mdCfg() {
 	// r.mdc.High()
-	// r.mdio.High()
 	r.mdio.Configure(machine.PinConfig{Mode: machine.PinOutput})
 	r.mdc.Configure(machine.PinConfig{Mode: machine.PinOutput})
 }
