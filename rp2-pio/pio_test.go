@@ -45,7 +45,9 @@ func TestAssemblerV0_spi3w(t *testing.T) {
 		0xc000, //  8: irq    nowait 0        side 0
 		//     .wrap
 	}
-
+	if len(program) != len(expectedProgram) {
+		t.Fatal("program length mismatch, this should not be tested")
+	}
 	for i := range program {
 		if program[i] != expectedProgram[i] {
 			t.Errorf("instr %d mismatch got!=expected: %#x != %#x", i, program[i], expectedProgram[i])
