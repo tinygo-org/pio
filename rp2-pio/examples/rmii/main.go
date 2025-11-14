@@ -54,6 +54,8 @@ func main() {
 		RxBufferSize: 2048,
 		TxBufferSize: 2048,
 	}
+	pinMDC.Configure(machine.PinConfig{Mode: machine.PinOutput})
+	pinMDC.Low()
 	// Sleep to allow serial monitor to connect
 	time.Sleep(2 * time.Second)
 	println("=== LAN 8720 RMII ===")
@@ -187,7 +189,7 @@ func (lan *LAN8720) Init() error {
 	const maxAddr = 31
 	lan.smiaddr = 255
 	for addr := uint8(0); addr <= maxAddr; addr++ {
-		val, err := lan.bus.MDIORead(addr, 0)
+		val, err := lan.bus.MDIORead(addr, regBasicStatus)
 		if err != nil {
 			continue
 		}
@@ -200,6 +202,7 @@ func (lan *LAN8720) Init() error {
 	if lan.smiaddr > maxAddr {
 		return errors.New("no PHY found via addr scanning")
 	}
+
 	ctl, err := lan.BasicControl()
 	if err != nil {
 		return errors.New("failed reading basic control: " + err.Error())

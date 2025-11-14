@@ -65,7 +65,7 @@ func NewRMII(smTx, smRx pio.StateMachine, cfg RMIIConfig) (*RMII, error) {
 		rxDVPin:  cfg.TxRx.CRSDVPin,
 		rxBuffer: make([]byte, rxBufSize),
 		txBuffer: make([]byte, txBufSize),
-		zmdio:    cfg.NoZMDIO,
+		zmdio:    !cfg.NoZMDIO,
 	}
 
 	// Configure MDIO/MDC pins
@@ -119,11 +119,11 @@ func (r *RMII) PHYAddr() uint8 {
 
 // mdioClockOut outputs a bit on MDIO while pulsing MDC clock.
 func (r *RMII) mdioClockOut(bit bool) {
-	r.mdc.Low()
-	time.Sleep(time.Microsecond)
 	r.mdioSet(bit)
 	time.Sleep(time.Microsecond)
 	r.mdc.High()
+	time.Sleep(time.Microsecond)
+	r.mdc.Low()
 	time.Sleep(time.Microsecond)
 }
 
@@ -152,16 +152,17 @@ func (r *RMII) mdioLow() {
 
 // mdioClockIn reads a bit from MDIO while pulsing MDC clock.
 func (r *RMII) mdioClockIn() bool {
-	r.mdc.Low()
-	time.Sleep(time.Microsecond)
 	r.mdc.High()
+	time.Sleep(time.Microsecond)
 	bit := r.mdio.Get()
+	time.Sleep(time.Microsecond)
+	r.mdc.Low()
 	time.Sleep(time.Microsecond)
 	return bit
 }
 
 func (r *RMII) mdCfg() {
-	// r.mdc.High()
+	r.mdc.Low()
 	r.mdio.Configure(machine.PinConfig{Mode: machine.PinOutput})
 	r.mdc.Configure(machine.PinConfig{Mode: machine.PinOutput})
 }
