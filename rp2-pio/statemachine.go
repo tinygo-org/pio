@@ -1,3 +1,5 @@
+//go:build rp2350 || rp2040
+
 package pio
 
 import (
