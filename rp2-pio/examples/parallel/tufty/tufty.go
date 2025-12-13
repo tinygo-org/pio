@@ -13,12 +13,12 @@ const clockHz = 133000000
 
 // Pimoroni Tufty definitions https://tinygo.org/docs/reference/microcontrollers/tufty2040/
 const (
-	csPin  = machine.GP10
-	dcPin  = machine.GP11
-	wrPin  = machine.GP12
-	db0Pin = machine.GP14
-	rdPin  = machine.GP13
-	blPin  = machine.GP2
+	csPin  = machine.GPIO10
+	dcPin  = machine.GPIO11
+	wrPin  = machine.GPIO12
+	db0Pin = machine.GPIO14
+	rdPin  = machine.GPIO13
+	blPin  = machine.GPIO2
 )
 
 func main() {
@@ -36,6 +36,10 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
+
+	println("Setting Up DMA")
+	p8tx.EnableDMA(true)
+
 	display := ST7789{
 		pl:       p8tx,
 		cs:       csPin,
@@ -50,18 +54,25 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	display.pl.Tx8([]byte("Hello World"))
+	//display.pl.Tx8([]byte("Hello World"))
 	// Setup DMA
-	println("Setting Up DMA")
-	// display.pl.EnableDMA(2)
 	rdPin.High()
 
 	println("Display Common Init")
 	display.CommonInit()
 
-	println("Making Screen Blue")
-	blue := color.RGBA{255, 255, 255, 255}
-	display.FillRectangle(0, 0, 320, 240, blue)
+	blue := color.RGBA{0, 0, 255, 128}
+	red := color.RGBA{255, 0, 0, 128}
+
+	for {
+		println("Making Screen Red")
+		display.FillRectangle(0, 0, 320, 240, red)
+		time.Sleep(2 * time.Second)
+
+		println("Making Screen Blue")
+		display.FillRectangle(0, 0, 320, 240, blue)
+		time.Sleep(2 * time.Second)
+	}
 }
 
 type Displayer interface {

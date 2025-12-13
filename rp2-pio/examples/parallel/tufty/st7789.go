@@ -60,13 +60,18 @@ func (st *ST7789) CommonInit() {
 
 	time.Sleep(150 * time.Millisecond)
 
-	//Common Init
+	// frame sync if used
 	println("TEON")
 	st.command(TEON, []byte{})
+	// Color Mode
 	println("COLMOD")
 	st.command(COLMOD, []byte{0x05}) // 16 bits per pixel
+
+	// command(reg::PORCTRL, 5, "\x0c\x0c\x00\x33\x33");
+	// Frame vertical sync and "porch"
 	println("PORCTRL")
 	st.command(PORCTRL, []byte{0x0c, 0x0c, 0x00, 0x33, 0x33})
+
 	println("LCMCTRL")
 	st.command(LCMCTRL, []byte{0x2c})
 	println("VDVVHREN")
@@ -77,32 +82,46 @@ func (st *ST7789) CommonInit() {
 	st.command(VDVS, []byte{0x20})
 	println("PWCTRL1")
 	st.command(PWCTRL1, []byte{0xa4, 0xa1})
+	// frame rate control (60hz)
 	println("FRCTRL2")
 	st.command(FRCTRL2, []byte{0x0f})
 
-	// Tufty is 320x240
+	// command(reg::RAMCTRL, 2, "\x00\xc0");
+	st.command(RAMCTRL, []byte{0x00, 0xc0})
+
 	println("GCTRL")
 	st.command(GCTRL, []byte{0x35})
 	println("VCOMS")
 	st.command(VCOMS, []byte{0x1f})
-	println("0xD6")
-	st.command(0xD6, []byte{0xa1}) // ???
+
 	println("GMCTRP1")
+	// "\xD0\x08\x11\x08\x0C\x15\x39\x33\x50\x36\x13\x14\x29\x2D");
 	st.command(GMCTRP1, []byte{0xD0, 0x08, 0x11, 0x08, 0x0C, 0x15, 0x39, 0x33, 0x50, 0x36, 0x13, 0x14, 0x29, 0x2D})
+
 	println("GMCTRN1")
+	// \xD0\x08\x10\x08\x06\x06\x39\x44\x51\x0B\x16\x14\x2F\x31"
 	st.command(GMCTRN1, []byte{0xD0, 0x08, 0x10, 0x08, 0x06, 0x06, 0x39, 0x44, 0x51, 0x0B, 0x16, 0x14, 0x2F, 0x31})
 
 	println("INVON")
 	st.command(INVON, []byte{})
+	time.Sleep(10 * time.Millisecond)
+
+	//d.sendCommand(SLPOUT, nil) // Exit sleep mode
 	println("SLPOUT")
 	st.command(SLPOUT, []byte{})
+
+	// println("NORON")
+	// st.command(NORON, []byte{})
+	// time.Sleep(10 * time.Millisecond)
+
 	println("DISPON")
 	st.command(DISPON, []byte{})
-
 	time.Sleep(100 * time.Millisecond)
 
 	// Configure Display Rotation
 	st.configureDisplayRotation(st.rotation)
+
+	time.Sleep(100 * time.Millisecond)
 
 	println("Turning on backlight")
 	if st.bl != machine.NoPin {
@@ -141,7 +160,7 @@ func (st *ST7789) configureDisplayRotation(rotation Rotation) {
 	raset[1] = (raset[1] << 8) | ((raset[1] >> 8) & 0xFF)
 
 	st.command(CASET, []byte{byte(caset[0] >> 8), byte(caset[0] & 0xff), byte(caset[1] >> 8), byte(caset[1] & 0xff)})
-	st.command(CASET, []byte{byte(raset[0] >> 8), byte(raset[0] & 0xff), byte(raset[1] >> 8), byte(raset[1] & 0xff)})
+	st.command(RASET, []byte{byte(raset[0] >> 8), byte(raset[0] & 0xff), byte(raset[1] >> 8), byte(raset[1] & 0xff)})
 	st.command(MADCTL, []byte{madctl})
 }
 

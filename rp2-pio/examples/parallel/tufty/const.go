@@ -1,32 +1,34 @@
 package main
 
 const (
+	CASET    byte = 0x2A
+	COLMOD   byte = 0x3A
+	DISPOFF  byte = 0x28
+	DISPON   byte = 0x29
+	FRCTRL2  byte = 0xC6
+	GAMSET   byte = 0x26
+	GCTRL    byte = 0xB7
+	GMCTRN1  byte = 0xE1
+	GMCTRP1  byte = 0xE0
+	INVOFF   byte = 0x20
+	INVON    byte = 0x21
+	LCMCTRL  byte = 0xC0
+	MADCTL   byte = 0x36
+	NORON    byte = 0x13
+	PORCTRL  byte = 0xB2
+	PWCTRL1  byte = 0xD0
+	PWMFRSEL byte = 0xCC
+	RAMWR    byte = 0x2C
+	RASET    byte = 0x2B
+	SLPOUT   byte = 0x11
 	SWRESET  byte = 0x01
 	TEOFF    byte = 0x34
 	TEON     byte = 0x35
-	MADCTL   byte = 0x36
-	COLMOD   byte = 0x3A
-	GCTRL    byte = 0xB7
 	VCOMS    byte = 0xBB
-	LCMCTRL  byte = 0xC0
+	VDVS     byte = 0xC4
 	VDVVRHEN byte = 0xC2
 	VRHS     byte = 0xC3
-	VDVS     byte = 0xC4
-	FRCTRL2  byte = 0xC6
-	PWCTRL1  byte = 0xD0
-	PORCTRL  byte = 0xB2
-	GMCTRP1  byte = 0xE0
-	GMCTRN1  byte = 0xE1
-	INVOFF   byte = 0x20
-	SLPOUT   byte = 0x11
-	DISPON   byte = 0x29
-	GAMSET   byte = 0x26
-	DISPOFF  byte = 0x28
-	RAMWR    byte = 0x2C
-	INVON    byte = 0x21
-	CASET    byte = 0x2A
-	RASET    byte = 0x2B
-	PWMFRSEL byte = 0xCC
+	RAMCTRL  byte = 0xB0
 )
 
 const (
