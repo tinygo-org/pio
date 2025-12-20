@@ -56,9 +56,11 @@ func main() {
 
 	println("Configuring display")
 	display.Configure(st7789.Config{
-		Width:    320,
-		Height:   240,
-		Rotation: st7789.NO_ROTATION,
+		Width:            320,
+		Height:           240,
+		Rotation:         st7789.NO_ROTATION,
+		IdleModePorch:    0x33,
+		PartialModePorch: 0x33,
 	})
 
 	width, height := int16(320), int16(240)
@@ -86,17 +88,3 @@ func (p *parallelBus) Transfer(w byte) (byte, error) {
 
 	return 0, nil
 }
-
-// func (st *ST7789) command(command byte, data []byte) {
-// 	st.dc.Low()
-// 	st.cs.Low()
-// 	st.pl.Tx8([]byte{command})
-// 	// st.writeBlockingParallel([]byte{command}, 1)
-
-// 	if len(data) > 0 {
-// 		st.dc.High()
-// 		st.pl.Tx8(data)
-// 		// st.writeBlockingParallel(data, len(data))
-// 	}
-// 	st.cs.High()
-// }
