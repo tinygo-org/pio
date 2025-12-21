@@ -29,6 +29,11 @@ type ParallelConfig struct {
 	// and pulling a new value from TxFIFO.
 	// Must be a multiple of BusWidth.
 	BitsPerPull uint8
+	// ShiftRight is true if OSR shift direction is right, false if left.
+	// Example: For a 3 bit width bus the value 4 or '0b100' in binary and
+	// ShiftRight set to true the bus outputs 2 zero bits before outputting the 1 bit.
+	// For the same value if ShiftRight is set to false the bus outputs
+	// ShiftRight bool
 }
 
 func NewParallel(sm pio.StateMachine, cfg ParallelConfig) (*Parallel, error) {
