@@ -65,7 +65,7 @@ func NewRMII(smTx, smRx pio.StateMachine, cfg RMIIConfig) (*RMII, error) {
 		rxDVPin:  cfg.TxRx.CRSDVPin,
 		rxBuffer: make([]byte, rxBufSize),
 		txBuffer: make([]byte, txBufSize),
-		zmdio:    !cfg.NoZMDIO,
+		zmdio:    cfg.NoZMDIO,
 	}
 
 	// Configure MDIO/MDC pins
@@ -119,11 +119,11 @@ func (r *RMII) PHYAddr() uint8 {
 
 // mdioClockOut outputs a bit on MDIO while pulsing MDC clock.
 func (r *RMII) mdioClockOut(bit bool) {
+	r.mdc.Low()
+	time.Sleep(time.Microsecond)
 	r.mdioSet(bit)
 	time.Sleep(time.Microsecond)
 	r.mdc.High()
-	time.Sleep(time.Microsecond)
-	r.mdc.Low()
 	time.Sleep(time.Microsecond)
 }
 
@@ -152,17 +152,15 @@ func (r *RMII) mdioLow() {
 
 // mdioClockIn reads a bit from MDIO while pulsing MDC clock.
 func (r *RMII) mdioClockIn() bool {
-	r.mdc.High()
-	time.Sleep(time.Microsecond)
-	bit := r.mdio.Get()
-	time.Sleep(time.Microsecond)
 	r.mdc.Low()
+	time.Sleep(time.Microsecond)
+	r.mdc.High()
+	bit := r.mdio.Get()
 	time.Sleep(time.Microsecond)
 	return bit
 }
 
 func (r *RMII) mdCfg() {
-	r.mdc.Low()
 	r.mdio.Configure(machine.PinConfig{Mode: machine.PinOutput})
 	r.mdc.Configure(machine.PinConfig{Mode: machine.PinOutput})
 }
@@ -210,7 +208,7 @@ func (r *RMII) MDIORead(phyAddr uint8, regAddr uint8) (uint16, error) {
 		data <<= 1
 		data |= uint16(b2u8(r.mdioClockIn()))
 	}
-
+	r.mdc.Low()
 	return data, nil
 }
 
@@ -254,7 +252,7 @@ func (r *RMII) MDIOWrite(phyAddr uint8, regAddr uint8, value uint16) error {
 	for i := 15; i >= 0; i-- {
 		r.mdioClockOut((value>>uint(i))&0x01 != 0)
 	}
-
+	r.mdc.Low()
 	// Release MDIO bus to high impedance
 	r.mdio.Configure(machine.PinConfig{Mode: machine.PinInput})
 
