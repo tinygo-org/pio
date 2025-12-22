@@ -31,6 +31,8 @@ var (
 // sendRawCommand sends a raw command to the ST7789 display.
 // This bypasses the st7789 driver to send missing initialization commands
 // that Pimoroni includes but TinyGo's driver doesn't.
+//
+//go:noinline
 func sendRawCommand(bus *piolib.Parallel, dc, cs machine.Pin, cmd byte, data []byte) {
 	cs.Low()
 	dc.Low() // Command mode
@@ -85,15 +87,15 @@ func main() {
 	// This is the most important missing command for eliminating horizontal banding.
 	sendRawCommand(p8tx, dcPin, csPin, 0xB0, []byte{0x00, 0xC0})
 
-	// Power and voltage control registers for stable operation
+	// // Power and voltage control registers for stable operation
 	sendRawCommand(p8tx, dcPin, csPin, 0xC0, []byte{0x2C})       // LCMCTRL - LCM control
 	sendRawCommand(p8tx, dcPin, csPin, 0xC2, []byte{0x01})       // VDVVRHEN - VDV/VRH enable
 	sendRawCommand(p8tx, dcPin, csPin, 0xC3, []byte{0x12})       // VRHS - VRH voltage setting
 	sendRawCommand(p8tx, dcPin, csPin, 0xC4, []byte{0x20})       // VDVS - VDV voltage setting
 	sendRawCommand(p8tx, dcPin, csPin, 0xD0, []byte{0xA4, 0xA1}) // PWCTRL1 - Power control
 
-	// PORCTRL (0xB2) - Porch timing with Pimoroni's values
-	sendRawCommand(p8tx, dcPin, csPin, 0xB2, []byte{0x0C, 0x0C, 0x00, 0x33, 0x33})
+	// // PORCTRL (0xB2) - Porch timing with Pimoroni's values
+	// sendRawCommand(p8tx, dcPin, csPin, 0xB2, []byte{0x0C, 0x0C, 0x00, 0x33, 0x33})
 
 	width, height := int16(320), int16(240)
 	for {

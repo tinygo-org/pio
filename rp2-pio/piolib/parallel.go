@@ -36,6 +36,7 @@ type ParallelConfig struct {
 	// ShiftRight bool
 }
 
+//go:noinline
 func NewParallel(sm pio.StateMachine, cfg ParallelConfig) (*Parallel, error) {
 	const sideSetBitCount = 1
 	const programOrigin = -1
