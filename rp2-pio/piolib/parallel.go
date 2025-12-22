@@ -29,8 +29,8 @@ type ParallelConfig struct {
 	// and pulling a new value from TxFIFO.
 	// Must be a multiple of BusWidth.
 	BitsPerPull uint8
-	// ShiftRight is true if OSR shift direction is right, false if left.
-	ShiftRight bool
+	// ShiftLeft is true if OSR shift direction is right, false if left.
+	ShiftLeft bool
 
 	// FastMode reduces PIO program size to 2 instructions. This may present instabilities on some systems
 	// but should usually "just work"
@@ -89,7 +89,7 @@ func NewParallel(sm pio.StateMachine, cfg ParallelConfig) (*Parallel, error) {
 	scfg := asm.DefaultStateMachineConfig(progOffset, program[:])
 
 	scfg.SetOutPins(cfg.DataBase, cfg.BusWidth)
-	scfg.SetOutShift(true, true, uint16(cfg.BitsPerPull))
+	scfg.SetOutShift(!cfg.ShiftLeft, true, uint16(cfg.BitsPerPull)) // false = LEFT shift for correct bit-to-pin mapping
 	scfg.SetSidesetPins(cfg.Clock)
 
 	scfg.SetClkDivIntFrac(whole, frac)

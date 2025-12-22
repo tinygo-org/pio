@@ -57,7 +57,7 @@ func main() {
 		BusWidth:    8,
 		BitsPerPull: 8,
 		FastMode:    true,
-		ShiftRight:  true,
+		ShiftLeft:   true,
 	})
 	if err != nil {
 		panic(err.Error())
