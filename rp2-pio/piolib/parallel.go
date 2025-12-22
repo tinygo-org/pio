@@ -22,7 +22,7 @@ type ParallelConfig struct {
 	Clock machine.Pin
 	// DataBase is the first of BusWidth consecutive pins defining the data lines of the parallel bus.
 	DataBase machine.Pin
-	// BusWidth is the amount of output pins of the parallel bus.
+	// BusWidth is the amount of output pins of the parallel bus or 'bits per clock'.
 	BusWidth uint8
 	// BitsPerPull sets the output shift register (OSR) pull threshold.
 	// It determines how many bits to send over bus per value pulled before discarding current OSR value
@@ -30,10 +30,11 @@ type ParallelConfig struct {
 	// Must be a multiple of BusWidth.
 	BitsPerPull uint8
 	// ShiftRight is true if OSR shift direction is right, false if left.
-	// Example: For a 3 bit width bus the value 4 or '0b100' in binary and
-	// ShiftRight set to true the bus outputs 2 zero bits before outputting the 1 bit.
-	// For the same value if ShiftRight is set to false the bus outputs
-	// ShiftRight bool
+	ShiftRight bool
+
+	// FastMode reduces PIO program size to 2 instructions. This may present instabilities on some systems
+	// but should usually "just work"
+	FastMode bool
 }
 
 //go:noinline
@@ -43,10 +44,14 @@ func NewParallel(sm pio.StateMachine, cfg ParallelConfig) (*Parallel, error) {
 	asm := pio.AssemblerV0{
 		SidesetBits: sideSetBitCount,
 	}
-	var program = [3]uint16{
+	var rawProgram = [3]uint16{
 		asm.Out(pio.OutDestPins, cfg.BusWidth).Side(0).Encode(), //  0: out    pins, <npins>   side 0
 		asm.Nop().Side(1).Encode(),                              //  1: nop                    side 1
 		asm.Nop().Side(0).Encode(),                              //  2: nop                    side 0
+	}
+	program := rawProgram[:]
+	if cfg.FastMode {
+		program = rawProgram[:2]
 	}
 	maxBaud := math.MaxUint32 / uint32(len(program))
 	if cfg.Baud > maxBaud {
