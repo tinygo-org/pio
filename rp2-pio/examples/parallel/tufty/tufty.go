@@ -28,6 +28,22 @@ var (
 	green = color.RGBA{R: 0, G: 255, B: 0, A: 255}
 )
 
+// sendRawCommand sends a raw command to the ST7789 display.
+// This bypasses the st7789 driver to send missing initialization commands
+// that Pimoroni includes but TinyGo's driver doesn't.
+//
+//go:noinline
+func sendRawCommand(bus *piolib.Parallel, dc, cs machine.Pin, cmd byte, data []byte) {
+	cs.Low()
+	dc.Low() // Command mode
+	bus.Tx8([]byte{cmd})
+	if len(data) > 0 {
+		dc.High() // Data mode
+		bus.Tx8(data)
+	}
+	cs.High()
+}
+
 func main() {
 	time.Sleep(3 * time.Second)
 
@@ -40,6 +56,8 @@ func main() {
 		DataBase:    db0Pin,
 		BusWidth:    8,
 		BitsPerPull: 8,
+		FastMode:    true,
+		ShiftLeft:   true,
 	})
 	if err != nil {
 		panic(err.Error())
@@ -62,6 +80,24 @@ func main() {
 		IdleModePorch:    0x33,
 		PartialModePorch: 0x33,
 	})
+
+	// Apply Pimoroni's initialization commands that TinyGo's ST7789 driver is missing.
+	// These are critical for proper display operation on the Tufty 2040.
+	println("Applying Pimoroni init sequence...")
+
+	// RAMCTRL (0xB0) - Pimoroni explicitly calls this the "banding fix"
+	// This is the most important missing command for eliminating horizontal banding.
+	sendRawCommand(p8tx, dcPin, csPin, 0xB0, []byte{0x00, 0xC0})
+
+	// // Power and voltage control registers for stable operation
+	sendRawCommand(p8tx, dcPin, csPin, 0xC0, []byte{0x2C})       // LCMCTRL - LCM control
+	sendRawCommand(p8tx, dcPin, csPin, 0xC2, []byte{0x01})       // VDVVRHEN - VDV/VRH enable
+	sendRawCommand(p8tx, dcPin, csPin, 0xC3, []byte{0x12})       // VRHS - VRH voltage setting
+	sendRawCommand(p8tx, dcPin, csPin, 0xC4, []byte{0x20})       // VDVS - VDV voltage setting
+	sendRawCommand(p8tx, dcPin, csPin, 0xD0, []byte{0xA4, 0xA1}) // PWCTRL1 - Power control
+
+	// // PORCTRL (0xB2) - Porch timing with Pimoroni's values
+	// sendRawCommand(p8tx, dcPin, csPin, 0xB2, []byte{0x0C, 0x0C, 0x00, 0x33, 0x33})
 
 	width, height := int16(320), int16(240)
 	for {
