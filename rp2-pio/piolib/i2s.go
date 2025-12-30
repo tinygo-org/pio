@@ -22,19 +22,30 @@ func NewI2S(sm pio.StateMachine, data, clockAndNext machine.Pin) (*I2S, error) {
 	sm.TryClaim() // SM should be claimed beforehand, we just guarantee it's claimed.
 	Pio := sm.PIO()
 
-	const origin = -1
-	const entryPoint = 7
+	// Program positions.
+	const (
+		origin     = -1
+		entryPoint = 7
+		bitloop1   = 0
+		bitloop0   = 4
+	)
+	// Sideset pin mapping: bit0=BCLK (bit clock), bit1=LRCLK (left/right channel select)
+	// LRCLK=1 for left channel, LRCLK=0 for right channel (I2S standard)
+	// Each loop outputs 16 bits per channel (1 initial + 15 in loop), 32 bits total per stereo sample
 	asm := pio.AssemblerV0{SidesetBits: 2}
 	var program = [...]uint16{
 		//     .wrap_target
-		asm.Out(pio.OutDestPins, 1).Side(2).Encode(),  // 0: out  pins, 1  side 2
-		asm.Jmp(pio.JmpXNZeroDec, 0).Side(3).Encode(), // 1: jmp  x--, 0   side 3
-		asm.Out(pio.OutDestPins, 1).Side(0).Encode(),  // 2: out  pins, 1  side 0
-		asm.Set(pio.SetDestX, 14).Side(1).Encode(),    // 3: set  x, 14    side 1
-		asm.Out(pio.OutDestPins, 1).Side(0).Encode(),  // 4: out  pins, 1  side 0
-		asm.Jmp(pio.JmpXNZeroDec, 4).Side(1).Encode(), // 5: jmp  x--, 4   side 1
-		asm.Out(pio.OutDestPins, 1).Side(2).Encode(),  // 6: out  pins, 1  side 2
-		asm.Set(pio.SetDestX, 14).Side(3).Encode(),    // 7: set  x, 14    side 3
+		bitloop1:// Left channel (LRCLK=1): output 16 bits with BCLK toggling
+		asm.Out(pio.OutDestPins, 1).Side(0b10).Encode(), // 0: out  pins, 1  BCLK=0, LRCLK=1
+		asm.Jmp(pio.JmpXNZeroDec, bitloop1).Side(0b11).Encode(), // 1: jmp  x--, 0   BCLK=1, LRCLK=1
+		asm.Out(pio.OutDestPins, 1).Side(0b00).Encode(),         // 2: out  pins, 1  BCLK=0, LRCLK=0 (transition to right)
+		asm.Set(pio.SetDestX, 14).Side(0b01).Encode(),           // 3: set  x, 14    BCLK=1, LRCLK=0
+
+		bitloop0:// Right channel (LRCLK=0): output 16 bits with BCLK toggling
+		asm.Out(pio.OutDestPins, 1).Side(0b00).Encode(), // 4: out  pins, 1  BCLK=0, LRCLK=0
+		asm.Jmp(pio.JmpXNZeroDec, bitloop0).Side(0b01).Encode(), // 5: jmp  x--, 4   BCLK=1, LRCLK=0
+		asm.Out(pio.OutDestPins, 1).Side(0b10).Encode(),         // 6: out  pins, 1  BCLK=0, LRCLK=1 (transition to left)
+		asm.Set(pio.SetDestX, 14).Side(0b11).Encode(),           // 7: set  x, 14    BCLK=1, LRCLK=1
 		//     .wrap
 	}
 

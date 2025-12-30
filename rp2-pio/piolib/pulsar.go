@@ -23,13 +23,18 @@ func NewPulsar(sm pio.StateMachine, pin machine.Pin) (*Pulsar, error) {
 	sm.TryClaim() // SM should be claimed beforehand, we just guarantee it's claimed.
 	Pio := sm.PIO()
 
-	const origin = -1
+	// Program positions.
+	const (
+		origin = -1
+		loop   = 3
+	)
 	asm := pio.AssemblerV0{SidesetBits: 0}
 	var program = [...]uint16{
 		//     .wrap_target
 		asm.Set(pio.SetDestPindirs, 1).Encode(),       // 0: set    pindirs, 1
 		asm.Pull(false, true).Encode(),                // 1: pull   block
 		asm.Mov(pio.MovDestX, pio.MovSrcOSR).Encode(), // 2: mov    x, osr
+		loop:// loop
 		asm.Set(pio.SetDestPins, 1).Delay(1).Encode(), // 3: set    pins, 1    [1]
 		asm.Set(pio.SetDestPins, 0).Encode(),          // 4: set    pins, 0
 		asm.Jmp(pio.JmpXNZeroDec, 3).Encode(),         // 5: jmp    x--, 3

@@ -38,6 +38,7 @@ func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, e
 	assm := pio.AssemblerV0{
 		SidesetBits: 1,
 	}
+	// Program positions.
 	const (
 		origin   = -1
 		wloopOff = 0
