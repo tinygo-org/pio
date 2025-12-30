@@ -39,13 +39,32 @@ func NewWS2812bFourPixelsRGBW(sm pio.StateMachine, pin machine.Pin) (*WS2812bFou
 func newWS2812bFourPixels(sm pio.StateMachine, pin machine.Pin, mode WS2812bFourPixelsMode) (*WS2812bFourPixels, error) {
 	sm.TryClaim() // SM should be claimed beforehand, we just guarantee it's claimed.
 
-	const pixelFreq = 800 * machine.KHz
-	whole, frac, err := pio.ClkDivFromFrequency(pixelFreq*ws2812bfourpixelsCyclesPerBit, machine.CPUFrequency())
+	const (
+		pixelFreq         = 800 * machine.KHz
+		cyclesPerBit      = 10
+		origin       int8 = -1
+	)
+	asm := pio.AssemblerV1{SidesetBits: 1}
+	var program = [...]uint16{
+		//     .wrap_target
+		asm.MovOSRFromRx(false, 0).Side(0).Encode(),              // 0: mov    osr, rxfifo[y]  side 0
+		asm.Out(pio.OutDestX, 1).Side(0).Delay(2).Encode(),       // 1: out    x, 1            side 0 [2]
+		asm.Jmp(pio.JmpXZero, 4).Side(1).Delay(1).Encode(),       // 2: jmp    !x, 4           side 1 [1]
+		asm.Jmp(pio.JmpOSRNotEmpty, 1).Side(1).Delay(4).Encode(), // 3: jmp    !osre, 1        side 1 [4]
+		asm.Jmp(pio.JmpOSRNotEmpty, 1).Side(0).Delay(4).Encode(), // 4: jmp    !osre, 1        side 0 [4]
+		asm.Jmp(pio.JmpYNZeroDec, 0).Side(0).Encode(),            // 5: jmp    y--, 0          side 0
+		asm.Set(pio.SetDestX, 31).Side(0).Delay(15).Encode(),     // 6: set    x, 31           side 0 [15]
+		asm.Set(pio.SetDestY, 3).Side(0).Delay(15).Encode(),      // 7: set    y, 3            side 0 [15]
+		asm.Jmp(pio.JmpXNZeroDec, 7).Side(0).Delay(15).Encode(),  // 8: jmp    x--, 7          side 0 [15]
+		//     .wrap
+	}
+
+	whole, frac, err := pio.ClkDivFromFrequency(pixelFreq*cyclesPerBit, machine.CPUFrequency())
 	if err != nil {
 		return nil, err
 	}
 	Pio := sm.PIO()
-	offset, err := Pio.AddProgram(ws2812bfourpixelsInstructions, ws2812bfourpixelsOrigin)
+	offset, err := Pio.AddProgram(program[:], origin)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +72,7 @@ func newWS2812bFourPixels(sm pio.StateMachine, pin machine.Pin, mode WS2812bFour
 	pin.Configure(machine.PinConfig{Mode: Pio.PinMode()})
 	sm.SetPindirsConsecutive(pin, 1, true)
 
-	cfg := ws2812bfourpixelsProgramDefaultConfig(offset)
+	cfg := asm.DefaultStateMachineConfig(offset, program[:])
 	cfg.SetSidesetPins(pin)
 	cfg.SetClkDivIntFrac(whole, frac)
 	cfg.SetFIFOJoin(pio.FifoJoinRxGet)

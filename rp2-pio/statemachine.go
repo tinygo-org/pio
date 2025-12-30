@@ -89,7 +89,7 @@ func (sm StateMachine) Init(initialPC uint8, cfg StateMachineConfig) {
 
 	sm.Restart()
 	sm.ClkDivRestart()
-	sm.Exec(assm.Jmp(initialPC, JmpAlways).Encode())
+	sm.Exec(assm.Jmp(JmpAlways, initialPC).Encode())
 }
 
 // SetEnabled controls whether the state machine is running.
@@ -357,8 +357,8 @@ func (sm StateMachine) getDst(dst InSrc) uint32 {
 
 // Jmp sets the program counter of a state machine to a PIO program address given a condition.
 // The state machine should be halted beforehand.
-func (sm StateMachine) Jmp(toAddr uint8, cond JmpCond) {
-	sm.Exec(assm.Jmp(toAddr, cond).Encode())
+func (sm StateMachine) Jmp(cond JmpCond, toAddr uint8) {
+	sm.Exec(assm.Jmp(cond, toAddr).Encode())
 }
 
 const (

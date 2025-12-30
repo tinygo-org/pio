@@ -100,7 +100,7 @@ func (asm AssemblerV0) instr(instr uint16) instructionV0 {
 // Set program counter to Address if Condition is true, otherwise no operation.
 // Delay cycles on a JMP always take effect, whether Condition is true or false, and they take place after Condition is
 // evaluated and the program counter is updated.
-func (asm AssemblerV0) Jmp(addr uint8, cond JmpCond) instructionV0 {
+func (asm AssemblerV0) Jmp(cond JmpCond, addr uint8) instructionV0 {
 	return asm.instrArgs(_INSTR_BITS_JMP, uint8(cond&0b111), addr)
 }
 
@@ -220,6 +220,7 @@ const (
 	_INSTR_BITS_IRQ  = 0xc000
 	_INSTR_BITS_SET  = 0xe000
 
+	_INSTR_BITS_MOVFIFO = 0x8000
 	// Bit mask for instruction code
 	_INSTR_BITS_Msk = 0xe000
 )

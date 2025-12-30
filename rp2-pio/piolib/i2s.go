@@ -22,11 +22,27 @@ func NewI2S(sm pio.StateMachine, data, clockAndNext machine.Pin) (*I2S, error) {
 	sm.TryClaim() // SM should be claimed beforehand, we just guarantee it's claimed.
 	Pio := sm.PIO()
 
-	offset, err := Pio.AddProgram(i2sInstructions, i2sOrigin)
+	const origin = -1
+	const entryPoint = 7
+	asm := pio.AssemblerV0{SidesetBits: 2}
+	var program = [...]uint16{
+		//     .wrap_target
+		asm.Out(pio.OutDestPins, 1).Side(2).Encode(),  // 0: out  pins, 1  side 2
+		asm.Jmp(pio.JmpXNZeroDec, 0).Side(3).Encode(), // 1: jmp  x--, 0   side 3
+		asm.Out(pio.OutDestPins, 1).Side(0).Encode(),  // 2: out  pins, 1  side 0
+		asm.Set(pio.SetDestX, 14).Side(1).Encode(),    // 3: set  x, 14    side 1
+		asm.Out(pio.OutDestPins, 1).Side(0).Encode(),  // 4: out  pins, 1  side 0
+		asm.Jmp(pio.JmpXNZeroDec, 4).Side(1).Encode(), // 5: jmp  x--, 4   side 1
+		asm.Out(pio.OutDestPins, 1).Side(2).Encode(),  // 6: out  pins, 1  side 2
+		asm.Set(pio.SetDestX, 14).Side(3).Encode(),    // 7: set  x, 14    side 3
+		//     .wrap
+	}
+
+	offset, err := Pio.AddProgram(program[:], origin)
 	if err != nil {
 		return nil, err
 	}
-	cfg := i2sProgramDefaultConfig(offset)
+	cfg := asm.DefaultStateMachineConfig(offset, program[:])
 
 	// Configure pins
 	pinCfg := machine.PinConfig{Mode: Pio.PinMode()}
@@ -44,7 +60,7 @@ func NewI2S(sm pio.StateMachine, data, clockAndNext machine.Pin) (*I2S, error) {
 	pinMask := uint32(1<<data) | uint32(0b11<<clockAndNext)
 	sm.SetPindirsMasked(pinMask, pinMask)
 	sm.SetPinsMasked(0, pinMask)
-	sm.Jmp(offset+i2soffset_entry_point, pio.JmpAlways)
+	sm.Jmp(pio.JmpAlways, offset+entryPoint)
 
 	i2s := &I2S{
 		sm:     sm,

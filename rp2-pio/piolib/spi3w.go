@@ -49,14 +49,14 @@ func NewSPI3w(sm pio.StateMachine, dio, clk machine.Pin, baud uint32) (*SPI3w, e
 		// write out x-1 bits.
 		wloopOff:// Write/Output loop.
 		assm.Out(pio.OutDestPins, 1).Side(0).Encode(), //  0: out    pins, 1         side 0
-		assm.Jmp(wloopOff, pio.JmpXNZeroDec).Side(1).Encode(), //  1: jmp    x--, 0          side 1
-		assm.Jmp(endOff, pio.JmpYZero).Side(0).Encode(),       //  2: jmp    !y, 7           side 0
+		assm.Jmp(pio.JmpXNZeroDec, wloopOff).Side(1).Encode(), //  1: jmp    x--, 0          side 1
+		assm.Jmp(pio.JmpYZero, endOff).Side(0).Encode(),       //  2: jmp    !y, 7           side 0
 		assm.Set(pio.SetDestPindirs, 0).Side(0).Encode(),      //  3: set    pindirs, 0      side 0
 		assm.Nop().Side(0).Encode(),                           //  4: nop                    side 0
 		// read in y-1 bits.
 		rloopOff:// Read/input loop
 		assm.In(pio.InSrcPins, 1).Side(1).Encode(), // 5: in     pins, 1         side 1
-		assm.Jmp(rloopOff, pio.JmpYNZeroDec).Side(0).Encode(), //  6: jmp    y--, 5          side 0
+		assm.Jmp(pio.JmpYNZeroDec, rloopOff).Side(0).Encode(), //  6: jmp    y--, 5          side 0
 		// Wait for SPI packet on IRQ.
 		endOff:// Wait on input pin.
 		assm.WaitPin(true, 0).Side(0).Encode(), //  7: wait   1 pin, 0        side 0
@@ -289,7 +289,7 @@ func (spi *SPI3w) prepTx(readbits, writebits uint32) {
 	spi.sm.SetY(readbits)
 	var asm pio.AssemblerV0
 	spi.sm.Exec(asm.Set(pio.SetDestPindirs, 1).Encode()) // Set Pindir out.
-	spi.sm.Jmp(spi.offset+spi.programWrapTarget, pio.JmpAlways)
+	spi.sm.Jmp(pio.JmpAlways, spi.offset+spi.programWrapTarget)
 
 	spi.sm.SetEnabled(true)
 }

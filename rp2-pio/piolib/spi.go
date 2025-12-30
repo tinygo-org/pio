@@ -28,35 +28,43 @@ func NewSPI(sm pio.StateMachine, spicfg machine.SPIConfig) (*SPI, error) {
 		return nil, err
 	}
 	Pio := sm.PIO()
-	var instructions []uint16
-	var origin int8
-	var cfger func(uint8) pio.StateMachineConfig
+
+	const origin int8 = -1
+	asm := pio.AssemblerV0{SidesetBits: 1}
+	// spi_cpha0: out pins, 1 side 0 [1]; in pins, 1 side 1 [1]
+	var cpha0Program = [...]uint16{
+		asm.Out(pio.OutDestPins, 1).Side(0).Delay(1).Encode(), // 0: out  pins, 1   side 0 [1]
+		asm.In(pio.InSrcPins, 1).Side(1).Delay(1).Encode(),    // 1: in   pins, 1   side 1 [1]
+	}
+	// spi_cpha1: out x, 1 side 0; mov pins, x side 1 [1]; in pins, 1 side 0
+	var cpha1Program = [...]uint16{
+		asm.Out(pio.OutDestX, 1).Side(0).Encode(),                       // 0: out    x, 1     side 0
+		asm.Mov(pio.MovDestPins, pio.MovSrcX).Side(1).Delay(1).Encode(), // 1: mov    pins, x  side 1 [1]
+		asm.In(pio.InSrcPins, 1).Side(0).Encode(),                       // 2: in     pins, 1  side 0
+	}
+
+	var program []uint16
 	switch spicfg.Mode {
 	case 0b00:
-		instructions = spi_cpha0Instructions
-		origin = spi_cpha0Origin
-		cfger = spi_cpha0ProgramDefaultConfig
+		program = cpha0Program[:]
 	case 0b01:
 		// The pin muxes can be configured to invert the output (among other things
 		// and this is a cheesy way to get CPOL=1
 		// rp.IO_BANK0.GPIO0_CTRL.ReplaceBits(value, ) TODO: https://github.com/raspberrypi/pico-sdk/blob/6a7db34ff63345a7badec79ebea3aaef1712f374/src/rp2_common/hardware_gpio/gpio.c#L80
 		// SPI is synchronous, so bypass input synchroniser to reduce input delay.
-
-		instructions = spi_cpha1Instructions
-		origin = spi_cpha1Origin
-		cfger = spi_cpha1ProgramDefaultConfig
+		program = cpha1Program[:]
 	case 0b10, 0b11:
 		return nil, errors.New("unsupported mode")
 	default:
 		panic("invalid mode")
 	}
 
-	offset, err := Pio.AddProgram(instructions, origin)
+	offset, err := Pio.AddProgram(program, origin)
 	if err != nil {
 		return nil, err
 	}
 
-	cfg := cfger(offset)
+	cfg := asm.DefaultStateMachineConfig(offset, program)
 
 	cfg.SetOutPins(spicfg.SDO, 1)
 	cfg.SetInPins(spicfg.SDI, 1)

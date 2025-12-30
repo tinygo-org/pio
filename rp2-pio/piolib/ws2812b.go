@@ -33,15 +33,31 @@ func NewWS2812B(sm pio.StateMachine, pin machine.Pin) (*WS2812B, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	const origin = -1
+	asm := pio.AssemblerV0{SidesetBits: 0}
+	var program = [...]uint16{
+		//     .wrap_target
+		asm.Pull(true, true).Encode(),                    // 0: pull   ifempty block
+		asm.Set(pio.SetDestPins, 1).Encode(),             // 1: set    pins, 1
+		asm.Out(pio.OutDestY, 1).Encode(),                // 2: out    y, 1
+		asm.Jmp(pio.JmpYZero, 5).Encode(),                // 3: jmp    !y, 5
+		asm.Jmp(pio.JmpAlways, 6).Delay(2).Encode(),      // 4: jmp    6                      [2]
+		asm.Set(pio.SetDestPins, 0).Delay(2).Encode(),    // 5: set    pins, 0                [2]
+		asm.Set(pio.SetDestPins, 0).Encode(),             // 6: set    pins, 0
+		asm.Jmp(pio.JmpOSRNotEmpty, 1).Delay(1).Encode(), // 7: jmp    !osre, 1               [1]
+		//     .wrap
+	}
+
 	// We add the program to PIO memory and store it's offset.
 	Pio := sm.PIO()
-	offset, err := Pio.AddProgram(ws2812b_ledInstructions, ws2812b_ledOrigin)
+	offset, err := Pio.AddProgram(program[:], origin)
 	if err != nil {
 		return nil, err
 	}
 	pin.Configure(machine.PinConfig{Mode: Pio.PinMode()})
 	sm.SetPindirsConsecutive(pin, 1, true)
-	cfg := ws2812b_ledProgramDefaultConfig(offset)
+	cfg := asm.DefaultStateMachineConfig(offset, program[:])
 	cfg.SetSetPins(pin, 1)
 	// We only use Tx FIFO, so we set the join to Tx.
 	cfg.SetFIFOJoin(pio.FifoJoinTx)

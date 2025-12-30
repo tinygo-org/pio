@@ -23,13 +23,26 @@ func NewPulsar(sm pio.StateMachine, pin machine.Pin) (*Pulsar, error) {
 	sm.TryClaim() // SM should be claimed beforehand, we just guarantee it's claimed.
 	Pio := sm.PIO()
 
-	offset, err := Pio.AddProgram(pulsarInstructions, pulsarOrigin)
+	const origin = -1
+	asm := pio.AssemblerV0{SidesetBits: 0}
+	var program = [...]uint16{
+		//     .wrap_target
+		asm.Set(pio.SetDestPindirs, 1).Encode(),       // 0: set    pindirs, 1
+		asm.Pull(false, true).Encode(),                // 1: pull   block
+		asm.Mov(pio.MovDestX, pio.MovSrcOSR).Encode(), // 2: mov    x, osr
+		asm.Set(pio.SetDestPins, 1).Delay(1).Encode(), // 3: set    pins, 1    [1]
+		asm.Set(pio.SetDestPins, 0).Encode(),          // 4: set    pins, 0
+		asm.Jmp(pio.JmpXNZeroDec, 3).Encode(),         // 5: jmp    x--, 3
+		//     .wrap
+	}
+
+	offset, err := Pio.AddProgram(program[:], origin)
 	if err != nil {
 		return nil, err
 	}
-	pin.Configure(machine.PinConfig{Mode: sm.PIO().PinMode()})
+	pin.Configure(machine.PinConfig{Mode: Pio.PinMode()})
 	sm.SetPindirsConsecutive(pin, 1, true)
-	cfg := pulsarProgramDefaultConfig(offset)
+	cfg := asm.DefaultStateMachineConfig(offset, program[:])
 	cfg.SetSetPins(pin, 1)
 	sm.Init(offset, cfg)
 	sm.SetEnabled(true)
@@ -85,7 +98,7 @@ func (p *Pulsar) Stop() {
 	p.sm.ClearFIFOs()
 	p.sm.Restart()
 	p.sm.ClkDivRestart()
-	p.sm.Jmp(p.offsetPlusOne-1, pio.JmpAlways)
+	p.sm.Jmp(pio.JmpAlways, p.offsetPlusOne-1)
 	p.sm.SetEnabled(true)
 }
 

@@ -34,6 +34,11 @@ func (asm AssemblerV0) DefaultStateMachineConfig(progOffset uint8, program []uin
 	return cfg
 }
 
+// DefaultStateMachineConfig wraps [AssemblerV0.DefaultStateMachineConfig] (identical in functionality).
+func (asm AssemblerV1) DefaultStateMachineConfig(progOffset uint8, program []uint16) StateMachineConfig {
+	return asm.v0().DefaultStateMachineConfig(progOffset, program)
+}
+
 // StateMachineConfig holds the configuration for a PIO state
 // machine.
 //

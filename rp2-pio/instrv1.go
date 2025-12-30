@@ -14,7 +14,7 @@ func (asm AssemblerV1) v0() AssemblerV0 {
 }
 
 // Jmp instruction unchanged from [AssemblerV0.Jmp].
-func (asm AssemblerV1) Jmp(addr uint8, cond JmpCond) instructionV0 { return asm.v0().Jmp(addr, cond) }
+func (asm AssemblerV1) Jmp(cond JmpCond, addr uint8) instructionV0 { return asm.v0().Jmp(cond, addr) }
 
 // WaitGPIO instruction unchanged from [AssemblerV0.WaitGPIO].
 func (asm AssemblerV1) WaitGPIO(polarity bool, pin uint8) instructionV0 {
@@ -85,7 +85,7 @@ func (asm AssemblerV1) MovReverse(dest MovDest, src MovSrc) instructionV0 {
 //     operand. Otherwise, they are indexed by the two least-significant bits of the Y register. When IdxI is clear, all non-zero
 //     values of Index are reserved encodings, and their operation is undefined.
 func (asm AssemblerV1) MovOSRFromRx(idxByImmediate bool, RxFifoIndex uint8) instructionV0 {
-	instr := _INSTR_BITS_MOV | (0b1001 << 4) | (uint16(boolAsU8(idxByImmediate) << 3)) | uint16(RxFifoIndex)&0b111
+	instr := _INSTR_BITS_MOVFIFO | (0b1001 << 4) | (uint16(boolAsU8(idxByImmediate) << 3)) | uint16(RxFifoIndex)&0b111
 	return asm.v0().instr(instr)
 }
 
@@ -97,7 +97,7 @@ func (asm AssemblerV1) MovOSRFromRx(idxByImmediate bool, RxFifoIndex uint8) inst
 //     operand. Otherwise, they are indexed by the two least-significant bits of the Y register. When IdxI is clear, all non-zero
 //     values of Index are reserved encodings, and their operation is undefined.
 func (asm AssemblerV1) MovISRToRx(idxByImmediate bool, RxFifoIndex uint8) instructionV0 {
-	instr := _INSTR_BITS_MOV | (0b1000 << 4) | (uint16(boolAsU8(idxByImmediate) << 3)) | uint16(RxFifoIndex)&0b111
+	instr := _INSTR_BITS_MOVFIFO | (0b1000 << 4) | (uint16(boolAsU8(idxByImmediate) << 3)) | uint16(RxFifoIndex)&0b111
 	return asm.v0().instr(instr)
 }
 
