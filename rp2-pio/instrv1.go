@@ -8,9 +8,7 @@ type AssemblerV1 struct {
 }
 
 func (asm AssemblerV1) v0() AssemblerV0 {
-	return AssemblerV0{
-		SidesetBits: asm.SidesetBits,
-	}
+	return AssemblerV0(asm)
 }
 
 // Jmp instruction unchanged from [AssemblerV0.Jmp].
