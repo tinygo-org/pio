@@ -1,0 +1,35 @@
+.program st7789_parallel_write
+.define public DC 8
+.define public WR 9
+
+.wrap_target
+    pull block
+    out pins, 8
+    nop [1]
+    set pins, (1 << WR)
+    nop [1]
+    set pins, 0
+    nop [2]
+    out pins, 8
+    nop [1]
+    set pins, (1 << WR)
+    nop [1]
+    set pins, 0
+    nop [2]
+.wrap
+
+.program st7789_command_write
+.define public DC 8
+.define public WR 9
+
+.wrap_target
+    pull block
+    set pins, 0
+    nop [1]
+    out pins, 8
+    nop [1]
+    set pins, (1 << WR)
+    nop [1]
+    set pins, 0
+    nop [3]
+.wrap
