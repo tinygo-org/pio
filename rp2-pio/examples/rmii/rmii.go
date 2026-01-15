@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"machine"
+	"time"
 
 	pio "github.com/tinygo-org/pio/rp2-pio"
 	"github.com/tinygo-org/pio/rp2-pio/piolib"
@@ -161,4 +162,66 @@ func (rmii *RMII) ID1() (uint16, error) {
 
 func (rmii *RMII) ID2() (uint16, error) {
 	return rmii.mdio.read(rmii.phyaddr, regPhyId2)
+}
+
+// ResetPHY performs a software reset and waits for completion.
+func (rmii *RMII) ResetPHY() error {
+	err := rmii.mdio.Write(rmii.phyaddr, regBasicControl, uint16(BMCRReset))
+	if err != nil {
+		return err
+	}
+	// Wait for reset to complete (bit self-clears).
+	// IEEE 802.3 allows up to 500ms.
+	for i := 0; i < 50; i++ {
+		time.Sleep(10 * time.Millisecond)
+		ctl, err := rmii.BasicControl()
+		if err != nil {
+			continue
+		}
+		if ctl&BMCRReset == 0 {
+			return nil
+		}
+	}
+	return errors.New("PHY reset timeout")
+}
+
+// EnableAutoNeg enables auto-negotiation and restarts it.
+func (rmii *RMII) EnableAutoNeg() error {
+	ctl, err := rmii.BasicControl()
+	if err != nil {
+		return err
+	}
+	ctl |= BMCRANEnable | BMCRANRestart
+	return rmii.mdio.Write(rmii.phyaddr, regBasicControl, uint16(ctl))
+}
+
+// IsLinkUp returns true if link is established.
+func (rmii *RMII) IsLinkUp() (bool, error) {
+	status, err := rmii.BasicStatus()
+	if err != nil {
+		return false, err
+	}
+	return status&BMSRLinkStatus != 0, nil
+}
+
+// LinkSpeed returns the negotiated link speed string (LAN8720-specific).
+func (rmii *RMII) LinkSpeed() (string, error) {
+	val, err := rmii.mdio.Read(rmii.phyaddr, regPhySpecialScontrolStatus)
+	if err != nil {
+		return "", err
+	}
+	// Bits [4:2] = Speed indication
+	speed := (val >> 2) & 0x07
+	switch speed {
+	case 0x01:
+		return "10Mbps half-duplex", nil
+	case 0x05:
+		return "10Mbps full-duplex", nil
+	case 0x02:
+		return "100Mbps half-duplex", nil
+	case 0x06:
+		return "100Mbps full-duplex", nil
+	default:
+		return "unknown", nil
+	}
 }
