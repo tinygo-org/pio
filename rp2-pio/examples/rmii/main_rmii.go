@@ -3,6 +3,8 @@ package main
 import (
 	"machine"
 	"time"
+
+	pio "github.com/tinygo-org/pio/rp2-pio"
 )
 
 // Pin configuration matching reference implementation
@@ -26,22 +28,31 @@ const (
 func main() {
 	time.Sleep(2 * time.Second)
 	println("start program")
-	const zmdio = true
-	const mdioMaxBaud = 50_000
-	const mdioMinSleep = time.Second / mdioMaxBaud
-	var mdio MDIO
-	var addrsraw [32]uint8
-	for baud := 10_000; baud <= mdioMaxBaud; baud += 1000 {
-		mdio.Configure(pinMDIO, pinMDC, baud, zmdio)
-		found := mdio.FindPHYs(addrsraw[:])
-		if found <= 0 {
-			println("no addrs found mdio baud", baud)
-			continue
-		}
-		println("found ", found, "PHYs @ baud", baud)
-		for i := range found {
-			println("\tPHY @", addrsraw[i])
-		}
-		time.Sleep(200 * time.Millisecond)
+	var rmii RMII
+	err := rmii.Configure(RMIIConfig{
+		PIO:       pio.PIO0,
+		TxPinBase: pinTxBase,
+		RxPinBase: pinRxBase,
+		CRSDV:     pinCRSDV,
+		RefClk:    pinRefClk,
+		MDIOPin:   pinMDIO,
+		MDCPin:    pinMDC,
+		Baud:      10_000_000,
+	})
+	if err != nil {
+		panic(err)
 	}
+	println("RMII configured")
+	err = rmii.SetFirstAddr()
+	if err != nil {
+		panic(err)
+	}
+	id1, _ := rmii.ID1()
+	id2, _ := rmii.ID2()
+	println("first addr set:", rmii.PHYAddr(), "id1,id2:", id1, id2)
+	err = rmii.SetControlEnable(true)
+	if err != nil {
+		panic(err)
+	}
+	println("control enabled")
 }
