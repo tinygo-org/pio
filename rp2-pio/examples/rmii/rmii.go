@@ -32,6 +32,8 @@ const (
 type BMCR uint16
 
 const (
+	BMCRAddr = 0x00
+
 	BMCRSpeed1000  BMCR = 0x0040 // MSB of Speed (1000Mbps)
 	BMCRCollision  BMCR = 0x0080 // Collision test
 	BMCRFullDuplex BMCR = 0x0100 // Full duplex mode
@@ -49,6 +51,8 @@ const (
 type BMSR uint16
 
 const (
+	BMSRAddr = 0x01
+
 	BMSRExtCap      BMSR = 0x0001 // Extended register capability
 	BMSRJabber      BMSR = 0x0002 // Jabber detected
 	BMSRLinkStatus  BMSR = 0x0004 // Link status (1=up)
@@ -172,8 +176,10 @@ func (rmii *RMII) ResetPHY() error {
 	}
 	// Wait for reset to complete (bit self-clears).
 	// IEEE 802.3 allows up to 500ms.
-	for i := 0; i < 50; i++ {
-		time.Sleep(10 * time.Millisecond)
+	const maxPolls = 50
+	const resetTimeout = 500 * time.Millisecond // As per standard.
+	for i := 0; i < maxPolls; i++ {
+		time.Sleep(resetTimeout / maxPolls)
 		ctl, err := rmii.BasicControl()
 		if err != nil {
 			continue
