@@ -14,19 +14,19 @@ import (
 // Pin configuration matching reference implementation
 // Reference: https://github.com/sandeepmistry/pico-rmii-ethernet/blob/main/examples/httpd/main.c
 const (
-	// TX pins: GPIO 0, 1, 2 (TXD0, TXD1, TX_EN)
-	pinTxBase = machine.GPIO0
+	// MDIO pins:
+	pinMDIO = machine.GPIO0
+	pinMDC  = machine.GPIO1
+	// Reference clock: 		 (50MHz from PHY)
+	// Mistakenly spelled as Retclk on breakout.
+	pinRefClk = machine.GPIO2
 
 	// RX pins: GPIO 3, 4, 5 (RXD0, RXD1, CRS_DV)
-	pinRxBase = machine.GPIO3
-	pinCRSDV  = machine.GPIO5
-
-	// MDIO pins:
-	pinMDC  = machine.GPIO6
-	pinMDIO = machine.GPIO7
-
-	// Reference clock: 		 (50MHz from PHY)
-	pinRefClk = machine.GPIO6
+	pinCRSDV  = machine.GPIO3
+	pinRxBase = machine.GPIO4
+	
+	// TX pins: GPIO 0, 1, 2 (TXD0, TXD1, TX_EN)
+	pinTxBase = machine.GPIO6
 )
 
 // Network configuration
