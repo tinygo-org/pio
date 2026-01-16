@@ -66,7 +66,7 @@ const (
 	BMSR100Base4    BMSR = 0x8000 // 100BASE-T4 capable
 )
 
-// ANAR represents the Auto-Negotiation Advertisement Register at address 0x04.
+// ANAR represents the Auto-Negotiation Advertisement Register value at address 0x04.
 // ANLPAR (Link Partner Ability Register at 0x05) shares the same bit layout.
 // Reference: IEEE 802.3 Clause 28.2.4.1
 type ANAR uint16
@@ -87,7 +87,90 @@ const (
 	ANARRemoteFault ANAR = 0x2000 // Remote fault
 	ANARAck         ANAR = 0x4000 // Acknowledge (ANLPAR only)
 	ANARNextPage    ANAR = 0x8000 // Next page capable
+
+	// Convenience masks
+	ANARSpeedMask ANAR = ANAR10Half | ANAR10Full | ANAR100Half | ANAR100Full | ANAR100BaseT4
+	ANARPauseMask ANAR = ANARPause | ANARPauseAsym
 )
+
+func (l LinkMode) ANAR() (a ANAR) {
+	switch l {
+	case Link10HDX:
+		a = ANAR10Half
+	case Link10FDX:
+		a = ANAR10Full
+	case Link100HDX:
+		a = ANAR100Half
+	case Link100FDX:
+		a = ANAR100Full
+	case Link100T4:
+		a = ANAR100BaseT4
+	}
+	return a
+}
+
+// WithPause returns ANAR with pause bits set according to parameters.
+//
+// Flow control allows a receiver to signal the sender to pause transmission.
+// Common combinations:
+//   - (true, false):  Symmetric pause - both ends can pause each other
+//   - (true, true):   Full flow control with asymmetric fallback
+//   - (false, true):  Rx-only pause - we can be paused, won't pause partner
+//   - (false, false): No flow control
+func (a ANAR) WithPause(symmetric, asymmetric bool) ANAR {
+	a &^= ANARPauseMask
+	if symmetric {
+		a |= ANARPause
+	}
+	if asymmetric {
+		a |= ANARPauseAsym
+	}
+	return a
+}
+
+// WithMaxSpeed returns ANAR with only speeds at or below maxMbps enabled.
+// Preserves non-speed bits (pause, selector, etc).
+func (a ANAR) WithMaxSpeed(maxMbps int) ANAR {
+	a &^= ANARSpeedMask
+	switch {
+	case maxMbps >= 100:
+		a |= ANAR100Half | ANAR100Full
+		fallthrough
+	case maxMbps >= 10:
+		a |= ANAR10Half | ANAR10Full
+	}
+	return a
+}
+
+// FullDuplexOnly returns ANAR with half-duplex modes cleared.
+func (a ANAR) FullDuplexOnly() ANAR {
+	return a &^ (ANAR10Half | ANAR100Half)
+}
+
+// HalfDuplexOnly returns ANAR with full-duplex modes cleared.
+func (a ANAR) HalfDuplexOnly() ANAR {
+	return a &^ (ANAR10Full | ANAR100Full)
+}
+
+// With10M returns ANAR with 10Mbps modes (half and full) enabled.
+func (a ANAR) With10M() ANAR {
+	return a | ANAR10Half | ANAR10Full
+}
+
+// With100M returns ANAR with 100Mbps modes (half and full) enabled.
+func (a ANAR) With100M() ANAR {
+	return a | ANAR100Half | ANAR100Full
+}
+
+// Without10M returns ANAR with 10Mbps modes cleared.
+func (a ANAR) Without10M() ANAR {
+	return a &^ (ANAR10Half | ANAR10Full)
+}
+
+// Without100M returns ANAR with 100Mbps modes cleared.
+func (a ANAR) Without100M() ANAR {
+	return a &^ (ANAR100Half | ANAR100Full | ANAR100BaseT4)
+}
 
 // LinkMode represents the negotiated Ethernet link speed and duplex mode.
 //
@@ -231,6 +314,46 @@ func (rmii *PHY) ResetPHY() (err error) {
 		return err
 	}
 	return errors.New("PHY reset timeout")
+}
+
+// SetupForced disables auto-negotiation and forces a specific link mode.
+//
+// Inspired by drivers/net/phy/phy_device.c
+func (phy *PHY) SetupForced(mode LinkMode) error {
+	var ctl BMCR
+	switch mode.SpeedMbps() {
+	case 1000:
+		ctl |= BMCRSpeed1000
+	case 100:
+		ctl |= BMCRSpeed100
+	case 10:
+		// No speed bits = 10Mbps
+	default:
+		return errors.New("unsupported forced link mode")
+	}
+	if mode.IsFullDuplex() {
+		ctl |= BMCRFullDuplex
+	}
+	// Note: BMCRANEnable is NOT set, disabling auto-negotiation
+	return phy.rwrite(BMCRAddr, uint16(ctl))
+}
+
+// Advertisement reads the current Auto-Negotiation Advertisement Register.
+func (phy *PHY) Advertisement() (ANAR, error) {
+	val, err := phy.rread(ANARAddr)
+	return ANAR(val), err
+}
+
+// SetAdvertisement writes to the Auto-Negotiation Advertisement Register.
+// Does NOT restart auto-negotiation; call EnableAutoNeg() after if needed.
+func (phy *PHY) SetAdvertisement(ad ANAR) error {
+	return phy.rwrite(ANARAddr, uint16(ad))
+}
+
+// LinkPartnerAdvertisement reads what the link partner is advertising (ANLPAR).
+func (phy *PHY) LinkPartnerAdvertisement() (ANAR, error) {
+	val, err := phy.rread(ANLPARAddr)
+	return ANAR(val), err
 }
 
 // EnableAutoNeg enables auto-negotiation and restarts it.
