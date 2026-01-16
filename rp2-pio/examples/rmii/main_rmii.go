@@ -101,9 +101,9 @@ func main() {
 
 	// Set up RX with callback.
 	var rxBuf [1518]byte // Max Ethernet frame size
-	var rcved int
-	rmii.rxtx.SetRxHandler(rxBuf[:], func(n int) {
-		rcved = n
+	var rcved bool
+	rmii.rxtx.SetRxHandler(rxBuf[:], func(b []byte) {
+		rcved = true
 	})
 
 	// Start receiving.
@@ -129,9 +129,10 @@ func main() {
 			}
 			lastTx = time.Now()
 		}
-		if rcved > 0 {
+		if rcved {
+			n := ethernetFrameLength(rxBuf[:])
 			parseAndPrintFrame(rxBuf[:n])
-			rcved = 0
+			rcved = false
 			err = rmii.rxtx.StartRx()
 			if err != nil {
 				panic(err)
@@ -203,4 +204,32 @@ func macString(mac []byte) string {
 		}
 	}
 	return string(buf[:])
+}
+
+// ethernetFrameLength scans data calculating CRC until it finds valid FCS.
+// Returns frame length (excluding FCS) or 0 if no valid frame found.
+// Inspired by Sandeep Mistry's pico-rmii-ethernet ethernet_frame_length().
+func ethernetFrameLength(data []byte) int {
+	const poly = 0xedb88320 // IEEE 802.3 CRC-32 polynomial (reversed)
+	crc := uint32(0xffffffff)
+	for i := 0; i < len(data)-4; i++ {
+		b := data[i]
+		for bit := 0; bit < 8; bit++ {
+			if (crc^uint32(b))&1 != 0 {
+				crc = (crc >> 1) ^ poly
+			} else {
+				crc >>= 1
+			}
+			b >>= 1
+		}
+		// Check if next 4 bytes match inverted CRC (FCS)
+		invCRC := ^crc
+		if data[i+1] == byte(invCRC) &&
+			data[i+2] == byte(invCRC>>8) &&
+			data[i+3] == byte(invCRC>>16) &&
+			data[i+4] == byte(invCRC>>24) {
+			return i + 1 // Frame length excluding FCS
+		}
+	}
+	return 0
 }

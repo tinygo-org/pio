@@ -23,7 +23,7 @@ type RMIITxRx struct {
 	dmaRx        dmaChannel
 	crsdvPin     machine.Pin
 	rxBuf        []byte
-	rxCallback   func(n int)
+	rxCallback   func([]byte)
 }
 
 // RMIITxRxConfig configures the RMII interface pins.
@@ -152,7 +152,7 @@ func NewRMIITxRx(smTx, smRx pio.StateMachine, cfg RMIITxRxConfig) (*RMIITxRx, er
 
 // SetRxHandler sets the receive buffer and callback.
 // Callback is called with the number of bytes received when CRS_DV falls.
-func (r *RMIITxRx) SetRxHandler(buf []byte, callback func(n int)) {
+func (r *RMIITxRx) SetRxHandler(buf []byte, callback func(buf []byte)) {
 	r.rxBuf = buf
 	r.rxCallback = callback
 }
@@ -206,19 +206,19 @@ func (r *RMIITxRx) onRxComplete() {
 	r.crsdvPin.SetInterrupt(0, nil)
 	// Stop PIO
 	r.smRx.SetEnabled(false)
-	// Abort DMA and get bytes transferred
-	n := r.RxBytesReceived()
+	// Abort DMA first (like Sandeep's implementation)
 	r.dmaRx.abort()
 	if r.rxCallback != nil {
-		r.rxCallback(n)
+		r.rxCallback(r.rxBuf)
 	}
 }
 
 // RxBytesReceived returns how many bytes have been received so far.
-// Useful for polling during active receive.
+// Uses DMA WRITE_ADDR to calculate bytes transferred.
 func (r *RMIITxRx) RxBytesReceived() int {
-	remaining := r.dmaRx.HW().TRANS_COUNT.Get()
-	return len(r.rxBuf) - int(remaining)
+	writeAddr := r.dmaRx.HW().WRITE_ADDR.Get()
+	startAddr := uint32(uintptr(unsafe.Pointer(&r.rxBuf[0])))
+	return int(writeAddr - startAddr)
 }
 
 // IsRxBusy returns true if a receive is in progress.
