@@ -66,6 +66,97 @@ const (
 	BMSR100Base4    BMSR = 0x8000 // 100BASE-T4 capable
 )
 
+// ANAR represents the Auto-Negotiation Advertisement Register at address 0x04.
+// ANLPAR (Link Partner Ability Register at 0x05) shares the same bit layout.
+// Reference: IEEE 802.3 Clause 28.2.4.1
+type ANAR uint16
+
+const (
+	ANARAddr   = 0x04
+	ANLPARAddr = 0x05
+	ANERAddr   = 0x06
+
+	ANARSelector    ANAR = 0x001f // Protocol selector (802.3 = 0x01)
+	ANAR10Half      ANAR = 0x0020 // 10BASE-T half-duplex
+	ANAR10Full      ANAR = 0x0040 // 10BASE-T full-duplex
+	ANAR100Half     ANAR = 0x0080 // 100BASE-TX half-duplex
+	ANAR100Full     ANAR = 0x0100 // 100BASE-TX full-duplex
+	ANAR100BaseT4   ANAR = 0x0200 // 100BASE-T4
+	ANARPause       ANAR = 0x0400 // Pause capability
+	ANARPauseAsym   ANAR = 0x0800 // Asymmetric pause
+	ANARRemoteFault ANAR = 0x2000 // Remote fault
+	ANARAck         ANAR = 0x4000 // Acknowledge (ANLPAR only)
+	ANARNextPage    ANAR = 0x8000 // Next page capable
+)
+
+// LinkMode represents the negotiated Ethernet link speed and duplex mode.
+//
+// Naming convention:
+//   - H/HDX: Half-duplex (one direction at a time)
+//   - F/FDX: Full-duplex (simultaneous bidirectional)
+//   - T4: 100BASE-T4 (100Mbps over 4 twisted pairs, legacy)
+//   - G: Gigabit, implies number is multiplied by 1000 (1G=1000M)
+//
+//go:generate stringer -type=LinkMode -linecomment
+type LinkMode uint8
+
+const (
+	LinkDown    LinkMode = iota // down
+	Link10HDX                   // 10M-H
+	Link10FDX                   // 10M-F
+	Link100HDX                  // 100M-H
+	Link100FDX                  // 100M-F
+	Link100T4                   // 100M-T4
+	Link1000HDX                 // 1000M-H
+	Link1000FDX                 // 1000M-F
+
+	// Clause 45 speeds (10Gbps+, full-duplex only):
+
+	Link2500FDX // 2.5G-F
+	Link5GFDX   // 5G-F
+	Link10GFDX  // 10G-F
+	Link25GFDX  // 25G-F
+	Link40GFDX  // 40G-F
+	Link100GFDX // 100G-F
+)
+
+// SpeedMbps returns the link speed in megabits per second.
+func (lm LinkMode) SpeedMbps() int {
+	switch lm {
+	case Link10HDX, Link10FDX:
+		return 10
+	case Link100HDX, Link100FDX, Link100T4:
+		return 100
+	case Link1000HDX, Link1000FDX:
+		return 1000
+	case Link2500FDX:
+		return 2500
+	case Link5GFDX:
+		return 5000
+	case Link10GFDX:
+		return 10_000
+	case Link25GFDX:
+		return 25_000
+	case Link40GFDX:
+		return 40_000
+	case Link100GFDX:
+		return 100_000
+	default:
+		return 0
+	}
+}
+
+// IsFullDuplex returns true if the link mode is full duplex.
+func (lm LinkMode) IsFullDuplex() bool {
+	switch lm {
+	case Link10FDX, Link100FDX, Link1000FDX,
+		Link2500FDX, Link5GFDX, Link10GFDX, Link25GFDX, Link40GFDX, Link100GFDX:
+		return true
+	default:
+		return false
+	}
+}
+
 type PHY struct {
 	mdio       MDIOBus
 	phyaddr    uint8
@@ -88,10 +179,6 @@ func (rmii *PHY) BasicControl() (BMCR, error) {
 func (rmii *PHY) BasicStatus() (BMSR, error) {
 	stat, err := rmii.rread(BMSRAddr)
 	return BMSR(stat), err
-}
-
-func (rmii *PHY) ResetBasicControl() error {
-	return rmii.rwrite(BMCRAddr, uint16(BMCRReset))
 }
 
 func (rmii *PHY) SetControlEnable(b bool) error {
@@ -170,4 +257,49 @@ func (rmii *PHY) rread(regaddr uint16) (uint16, error) {
 }
 func (rmii *PHY) rwrite(regaddr, value uint16) error {
 	return rmii.mdio.Write(rmii.phyaddr, rmii.isClause45, regaddr, value)
+}
+
+// NegotiatedLink returns the auto-negotiated link mode using standard MII registers.
+// Returns LinkMode based on ANAR (our advertisement) AND ANLPAR (link partner ability).
+// Priority order per IEEE 802.3 Annex 28B.3.
+func (phy *PHY) NegotiatedLink() (LinkMode, error) {
+	// First check if auto-negotiation is complete
+	status, err := phy.rread(BMSRAddr)
+	if err != nil {
+		return LinkDown, err
+	}
+	if BMSR(status)&BMSRANComplete == 0 {
+		return LinkDown, errors.New("auto-negotiation not complete")
+	}
+
+	// Read our advertisement
+	anar, err := phy.rread(ANARAddr)
+	if err != nil {
+		return LinkDown, err
+	}
+
+	// Read link partner's advertisement
+	anlpar, err := phy.rread(ANLPARAddr)
+	if err != nil {
+		return LinkDown, err
+	}
+
+	// Common capabilities = what both sides support
+	common := ANAR(anar) & ANAR(anlpar)
+
+	// Select highest common capability (priority order per IEEE 802.3 Annex 28B.3)
+	switch {
+	case common&ANAR100Full != 0:
+		return Link100FDX, nil
+	case common&ANAR100BaseT4 != 0:
+		return Link100T4, nil
+	case common&ANAR100Half != 0:
+		return Link100HDX, nil
+	case common&ANAR10Full != 0:
+		return Link10FDX, nil
+	case common&ANAR10Half != 0:
+		return Link10HDX, nil
+	default:
+		return LinkDown, nil
+	}
 }

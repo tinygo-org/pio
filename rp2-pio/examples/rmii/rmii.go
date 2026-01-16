@@ -25,7 +25,7 @@ type RMIIConfig struct {
 }
 
 func (rmii *RMII) Configure(cfg RMIIConfig) error {
-	var mdio MDIO // We use default bitbang for example. See github.com/soypat/lneto/phy for better patterns.
+	var mdio MDIOBitBang // We use default bitbang for example. See github.com/soypat/lneto/phy for better patterns.
 	mdio.Configure(cfg.MDIOPin, cfg.MDCPin, 50_000, true)
 	rmii.PHY.mdio = &mdio
 	rmii.PHY.isClause45 = 0
@@ -70,26 +70,4 @@ func (rmii *RMII) SetFirstAddr() error {
 	}
 	rmii.phyaddr = addrs[0]
 	return nil
-}
-
-// LinkSpeed returns the negotiated link speed string (LAN8720-specific).
-func (rmii *RMII) LinkSpeed() (string, error) {
-	val, err := rmii.rread(regPhySpecialScontrolStatus)
-	if err != nil {
-		return "", err
-	}
-	// Bits [4:2] = Speed indication
-	speed := (val >> 2) & 0x07
-	switch speed {
-	case 0x01:
-		return "10Mbps half-duplex", nil
-	case 0x05:
-		return "10Mbps full-duplex", nil
-	case 0x02:
-		return "100Mbps half-duplex", nil
-	case 0x06:
-		return "100Mbps full-duplex", nil
-	default:
-		return "unknown", nil
-	}
 }

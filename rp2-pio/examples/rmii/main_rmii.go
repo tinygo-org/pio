@@ -7,6 +7,15 @@ import (
 	pio "github.com/tinygo-org/pio/rp2-pio"
 )
 
+// See github.com/soypat/lneto/phy for a more complete
+// and modular PHY/MAC/MII implementation.
+
+// In order of level of abstraction, from lower level to higher level:
+//   - mdio.go contains MDIO bus implementation and HAL definition.
+//   - phy.go contains PHY access via MDIO. So phy, device, register address logic.
+//   - rmii.go contains RMII integration with the PHY logic, so Rx/Tx added to MDIO.
+//   - This file contains the main executable program which uses the logic shown.
+
 // Pin configuration matching reference implementation
 // Reference: https://github.com/sandeepmistry/pico-rmii-ethernet/blob/main/examples/httpd/main.c
 const (
@@ -29,7 +38,7 @@ func main() {
 	// Do initial test
 	time.Sleep(2 * time.Second)
 	println("start program")
-	var mdio MDIO
+	var mdio MDIOBitBang
 	mdio.Configure(pinMDIO, pinMDC, 10_000, true)
 	var addrs [32]uint8
 	n, err := FindClause22PHYs(&mdio, addrs[:])

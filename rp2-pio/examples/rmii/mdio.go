@@ -63,19 +63,19 @@ func FindClause22PHYs(mdio MDIOBus, dst []uint8) (n int, err error) {
 	return n, err
 }
 
-var _ MDIOBus = (*MDIO)(nil) // compile time guarantee of interface implementation.
+var _ MDIOBus = (*MDIOBitBang)(nil) // compile time guarantee of interface implementation.
 
-// MDIO provides MDIO/MDC management interface for PHY register access
+// MDIOBitBang provides a software defined(bitbang) MDIO/MDC management interface for PHY register access
 // as the STA (Management station, this implementation) which communicates to the PHY (Physical layer device).
 // Inspired by linux/v3.13.1/source/drivers/net/phy/mdio-bitbang.c
-type MDIO struct {
+type MDIOBitBang struct {
 	zmdio  bool
 	data   machine.Pin
 	clk    machine.Pin
 	_delay time.Duration
 }
 
-func (m *MDIO) Configure(dataPin, clkPin machine.Pin, baud int, zmdio bool) {
+func (m *MDIOBitBang) Configure(dataPin, clkPin machine.Pin, baud int, zmdio bool) {
 	m._delay = time.Second / time.Duration(baud) / 2
 	m._delay = max(m._delay, time.Nanosecond*340) // 300ns is max turnaround time according to MDIO spec. We give some leeway.
 	m.zmdio = zmdio
@@ -84,31 +84,8 @@ func (m *MDIO) Configure(dataPin, clkPin machine.Pin, baud int, zmdio bool) {
 	// m.reset()
 }
 
-// FindPHYs finds all regular non-clause45 PHYs on the MDIO bus and writes them to dst.
-func (m *MDIO) FindPHYs(dst []uint8) int {
-	const maxAddr = 31
-	const regBasicStatus = 0x01
-	if len(dst) < 32 {
-		panic("require buffer length 32 for FindAddrs")
-	}
-	written := 0
-	for addr := uint8(0); addr <= maxAddr; addr++ {
-		val, err := m.readLegacy(addr, regBasicStatus)
-		if err != nil {
-			continue
-		}
-		// Basic status has some bits that must be zero and one, so if this check fails then we know its a bad address.
-		if val != 0xffff && val != 0x0000 {
-			dst[written] = addr
-			written++
-		}
-		time.Sleep(150 * time.Microsecond)
-	}
-	return written
-}
-
 // Read performs regular read of a PHY's register.
-func (m *MDIO) Read(phyAddr, devAddr uint8, regAddr uint16) (uint16, error) {
+func (m *MDIOBitBang) Read(phyAddr, devAddr uint8, regAddr uint16) (uint16, error) {
 	isC45 := devAddr != 0
 	if isC45 {
 		m.cmdAddr2(phyAddr, devAddr, regAddr)
@@ -132,7 +109,7 @@ func (m *MDIO) Read(phyAddr, devAddr uint8, regAddr uint16) (uint16, error) {
 }
 
 // Read performs regular read of a PHY's register.
-func (m *MDIO) Write(phyAddr, devAddr uint8, regAddr, value uint16) error {
+func (m *MDIOBitBang) Write(phyAddr, devAddr uint8, regAddr, value uint16) error {
 	isC45 := devAddr != 0
 	if isC45 {
 		m.cmdAddr2(phyAddr, devAddr, regAddr)
@@ -150,7 +127,7 @@ func (m *MDIO) Write(phyAddr, devAddr uint8, regAddr, value uint16) error {
 	return nil
 }
 
-func (m *MDIO) cmdAddr2(phy, dev uint8, reg uint16) {
+func (m *MDIOBitBang) cmdAddr2(phy, dev uint8, reg uint16) {
 	m.cmd(c45Addr, phy, dev)
 	// turnaround 10.
 	m.sendBit(true)
@@ -161,7 +138,7 @@ func (m *MDIO) cmdAddr2(phy, dev uint8, reg uint16) {
 	m.getBit()
 }
 
-func (m *MDIO) cmd(op uint16, phy uint8, reg uint8) {
+func (m *MDIOBitBang) cmd(op uint16, phy uint8, reg uint8) {
 	const writeDir = true
 	m.setDir(writeDir)
 	// Preamble, 32 bits of 1.
@@ -179,13 +156,13 @@ func (m *MDIO) cmd(op uint16, phy uint8, reg uint8) {
 	m.sendNum(uint16(reg), 5)
 }
 
-func (m *MDIO) sendNum(val uint16, bits int) {
+func (m *MDIOBitBang) sendNum(val uint16, bits int) {
 	for i := bits - 1; i >= 0; i-- {
 		m.sendBit((val>>i)&1 != 0)
 	}
 }
 
-func (m *MDIO) getNum(bits int) (ret uint16) {
+func (m *MDIOBitBang) getNum(bits int) (ret uint16) {
 	for i := bits - 1; i >= 0; i-- {
 		ret <<= 1
 		ret |= uint16(b2u8(m.getBit()))
@@ -199,7 +176,7 @@ func (m *MDIO) getNum(bits int) (ret uint16) {
 // from rmii_ethernet.c
 
 // reset sets the resting voltages on the MDIO bus.
-func (m *MDIO) reset() {
+func (m *MDIOBitBang) reset() {
 	// Set values BEFORE configuring as output (avoids glitches)
 	m.clk.Low()
 	m.clk.Configure(machine.PinConfig{Mode: machine.PinOutput})
@@ -214,7 +191,7 @@ func (m *MDIO) reset() {
 }
 
 // setDir configures pins preparing for write/read operations.
-func (m *MDIO) setDir(outWrite bool) {
+func (m *MDIOBitBang) setDir(outWrite bool) {
 	if outWrite {
 		if m.zmdio {
 			// In zmdio mode, mdioSet() handles direction
@@ -232,7 +209,7 @@ func (m *MDIO) setDir(outWrite bool) {
 }
 
 // mdioClockOut outputs a bit on MDIO while pulsing MDC clock.
-func (m *MDIO) mdioClockOut(bit bool) {
+func (m *MDIOBitBang) mdioClockOut(bit bool) {
 	m.clk.Low()
 	m.delay()
 	m.mdioSet(bit)
@@ -242,11 +219,11 @@ func (m *MDIO) mdioClockOut(bit bool) {
 }
 
 // delay sleeps for half a clock cycle.
-func (m *MDIO) delay() {
+func (m *MDIOBitBang) delay() {
 	time.Sleep(m._delay)
 }
 
-func (m *MDIO) mdioSet(b bool) {
+func (m *MDIOBitBang) mdioSet(b bool) {
 	if m.zmdio {
 		if b {
 			m.mdioZHigh()
@@ -258,18 +235,18 @@ func (m *MDIO) mdioSet(b bool) {
 	}
 }
 
-func (m *MDIO) mdioZHigh() {
+func (m *MDIOBitBang) mdioZHigh() {
 	// RMII z pin level means high impedance, pull up resistor.
 	m.data.Configure(machine.PinConfig{Mode: machine.PinInputPullup})
 }
 
-func (m *MDIO) mdioLow() {
+func (m *MDIOBitBang) mdioLow() {
 	// RMII 0 pin level sets as output
 	m.data.Low()
 	m.data.Configure(machine.PinConfig{Mode: machine.PinOutput})
 }
 
-func (m *MDIO) sendBit(b bool) {
+func (m *MDIOBitBang) sendBit(b bool) {
 	m.mdioSet(b)
 	m.delay()
 	m.clk.High()
@@ -277,7 +254,7 @@ func (m *MDIO) sendBit(b bool) {
 	m.clk.Low()
 }
 
-func (m *MDIO) getBit() bool {
+func (m *MDIOBitBang) getBit() bool {
 	m.delay()
 	m.clk.High()
 	m.delay()
@@ -290,58 +267,4 @@ func b2u8(b bool) uint8 {
 		return 1
 	}
 	return 0
-}
-
-// Legacy functions.
-
-func (m *MDIO) readLegacy(phy uint8, reg uint32) (uint16, error) {
-	if reg&miaddrc45 != 0 {
-		reg = m.cmdAddrLegacy(phy, reg)
-		m.cmd(c45Read, phy, uint8(reg))
-	} else {
-		m.cmd(mdioRead, phy, uint8(reg))
-	}
-	m.setDir(false)
-	// Check turnaround bit, PHY should drive it to zero.
-	if m.getBit() {
-		// PHY did not drive low, as would be expected.
-		// Ensure flush:
-		for range 32 {
-			m.getBit()
-		}
-		return 0xffff, errors.New("PHY did not drive turnaround low")
-	}
-	ret := m.getNum(16)
-	m.getBit()
-	return ret, nil
-}
-
-func (m *MDIO) writeLegacy(phy uint8, reg uint32, value uint16) {
-	if reg&miaddrc45 != 0 {
-		reg = m.cmdAddrLegacy(phy, reg)
-		m.cmd(c45Write, phy, uint8(reg))
-	} else {
-		m.cmd(mdioWrite, phy, uint8(reg))
-	}
-	// send turnaround (10)
-	m.sendBit(true)
-	m.sendBit(false)
-
-	m.sendNum(value, 16)
-	m.setDir(false)
-	m.getBit()
-}
-
-func (m *MDIO) cmdAddrLegacy(phy uint8, addr uint32) uint32 {
-	devAddr := (addr >> 16) & 0x1f
-	reg := addr & 0xffff
-	m.cmd(c45Addr, phy, uint8(devAddr))
-	// turnaround 10.
-	m.sendBit(true)
-	m.sendBit(false)
-
-	m.sendNum(uint16(reg), 16)
-	m.setDir(false)
-	m.getBit()
-	return devAddr
 }
