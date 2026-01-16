@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"machine"
 
 	pio "github.com/tinygo-org/pio/rp2-pio"
@@ -30,7 +29,11 @@ func (rmii *RMII) Configure(cfg RMIIConfig) error {
 	mdio.Configure(cfg.MDIOPin, cfg.MDCPin, 50_000, true)
 	rmii.PHY.mdio = &mdio
 	rmii.PHY.isClause45 = 0
-	err := rmii.ResetPHY()
+	err := rmii.SetFirstAddr()
+	if err != nil {
+		return err
+	}
+	err = rmii.ResetPHY()
 	if err != nil {
 		return err
 	}
@@ -59,18 +62,11 @@ func (rmii *RMII) Configure(cfg RMIIConfig) error {
 	return nil
 }
 
-func (rmii *RMII) PHYAddr() uint8 {
-	return rmii.phyaddr
-}
-
 func (rmii *RMII) SetFirstAddr() error {
 	var addrs [32]uint8
-	nFound, err := FindClause22PHYs(rmii.mdio, addrs[:])
-	if nFound <= 0 {
-		if err != nil {
-			return err
-		}
-		return errors.New("did not find any PHY on MDIO line")
+	_, err := FindClause22PHYs(rmii.mdio, addrs[:])
+	if err != nil {
+		return err
 	}
 	rmii.phyaddr = addrs[0]
 	return nil

@@ -35,6 +35,7 @@ type MDIOBus interface {
 }
 
 // FindPHYs finds all regular non-clause45 PHYs on the MDIO bus and writes them to dst.
+// FindClause22PHYs returns error only if unable to find no PHYs.
 func FindClause22PHYs(mdio MDIOBus, dst []uint8) (n int, err error) {
 	const maxAddr = 31
 	const regBasicStatus = 0x01
@@ -45,8 +46,7 @@ func FindClause22PHYs(mdio MDIOBus, dst []uint8) (n int, err error) {
 	for addr := uint8(0); addr <= maxAddr; addr++ {
 		// Future proofing for supported clause 45.
 		// Check PMA/PMD device (DEVAD 1), register 0 (control)
-		var val uint16
-		val, err = mdio.Read(addr, 0, BMCRAddr)
+		val, err := mdio.Read(addr, 0, BMSRAddr)
 		if err != nil {
 			continue
 		}
@@ -56,6 +56,9 @@ func FindClause22PHYs(mdio MDIOBus, dst []uint8) (n int, err error) {
 			n++
 		}
 		time.Sleep(150 * time.Microsecond)
+	}
+	if n <= 0 {
+		err = errors.New("no phy found")
 	}
 	return n, err
 }
@@ -106,10 +109,8 @@ func (m *MDIO) FindPHYs(dst []uint8) int {
 
 // Read performs regular read of a PHY's register.
 func (m *MDIO) Read(phyAddr, devAddr uint8, regAddr uint16) (uint16, error) {
-	return m.readLegacy(phyAddr, uint32(regAddr))
 	isC45 := devAddr != 0
 	if isC45 {
-		println("C45 enabled")
 		m.cmdAddr2(phyAddr, devAddr, regAddr)
 		m.cmd(c45Read, phyAddr, devAddr)
 	} else {
