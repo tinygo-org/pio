@@ -80,7 +80,7 @@ func main() {
 	id1, _ := rmii.ID1()
 	id2, _ := rmii.ID2()
 	println("first addr set:", rmii.PHYAddr(), "id1,id2:", id1, id2)
-	err = rmii.SetControlEnable(true)
+	err = rmii.EnableAutoNegotiation(true)
 	if err != nil {
 		panic(err)
 	}

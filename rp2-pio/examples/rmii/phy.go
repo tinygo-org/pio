@@ -76,7 +76,8 @@ const (
 	ANLPARAddr = 0x05
 	ANERAddr   = 0x06
 
-	ANARSelector    ANAR = 0x001f // Protocol selector (802.3 = 0x01)
+	ANARSelector    ANAR = 0x001f // Protocol selector mask
+	ANARSelector8023 ANAR = 0x0001 // IEEE 802.3 selector value (required)
 	ANAR10Half      ANAR = 0x0020 // 10BASE-T half-duplex
 	ANAR10Full      ANAR = 0x0040 // 10BASE-T full-duplex
 	ANAR100Half     ANAR = 0x0080 // 100BASE-TX half-duplex
@@ -150,6 +151,12 @@ func (a ANAR) FullDuplexOnly() ANAR {
 // HalfDuplexOnly returns ANAR with full-duplex modes cleared.
 func (a ANAR) HalfDuplexOnly() ANAR {
 	return a &^ (ANAR10Full | ANAR100Full)
+}
+
+// NewANAR returns an ANAR with the IEEE 802.3 selector set.
+// Always start with this when building an advertisement value.
+func NewANAR() ANAR {
+	return ANARSelector8023
 }
 
 // With10M returns ANAR with 10Mbps modes (half and full) enabled.
@@ -284,12 +291,16 @@ func (rmii *PHY) BasicStatus() (BMSR, error) {
 	return BMSR(stat), err
 }
 
-func (rmii *PHY) SetControlEnable(b bool) error {
+func (rmii *PHY) EnableAutoNegotiation(b bool) error {
 	ctl, err := rmii.BasicControl()
 	if err != nil {
 		return err
 	}
-	ctl |= BMCRANEnable
+	if b {
+		ctl |= BMCRANEnable
+	} else {
+		ctl &^= BMCRANEnable
+	}
 	err = rmii.rwrite(regBasicControl, uint16(ctl))
 	if err != nil {
 		return err
@@ -365,7 +376,7 @@ func (phy *PHY) Advertisement() (ANAR, error) {
 }
 
 // SetAdvertisement writes to the Auto-Negotiation Advertisement Register.
-// Does NOT restart auto-negotiation; call EnableAutoNeg() after if needed.
+// Does NOT restart auto-negotiation; call RestartAutoNeg() after if needed.
 func (phy *PHY) SetAdvertisement(ad ANAR) error {
 	return phy.rwrite(ANARAddr, uint16(ad))
 }
@@ -376,8 +387,8 @@ func (phy *PHY) LinkPartnerAdvertisement() (ANAR, error) {
 	return ANAR(val), err
 }
 
-// EnableAutoNeg enables auto-negotiation and restarts it.
-func (rmii *PHY) EnableAutoNeg() error {
+// RestartAutoNeg enables auto-negotiation and restarts it.
+func (rmii *PHY) RestartAutoNeg() error {
 	ctl, err := rmii.BasicControl()
 	if err != nil {
 		return err
@@ -407,11 +418,11 @@ func (rmii *PHY) rwrite(regaddr, value uint16) error {
 // Priority order per IEEE 802.3 Annex 28B.3.
 func (phy *PHY) NegotiatedLink() (LinkMode, error) {
 	// First check if auto-negotiation is complete
-	status, err := phy.rread(BMSRAddr)
+	status, err := phy.BasicStatus()
 	if err != nil {
 		return LinkDown, err
 	}
-	if BMSR(status)&BMSRANComplete == 0 {
+	if status&BMSRANComplete == 0 {
 		return LinkDown, errors.New("auto-negotiation not complete")
 	}
 
