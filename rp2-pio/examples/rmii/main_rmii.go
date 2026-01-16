@@ -163,13 +163,13 @@ func buildTestFrame(seq uint32) []byte {
 	payload[len(payload)-2] = byte(seq >> 8)
 	payload[len(payload)-1] = byte(seq)
 
-	// Build Ethernet frame: DstMAC(6) + SrcMAC(6) + EtherType(2) + Payload
-	frame := make([]byte, 0, 14+len(payload))
+	// Build Ethernet frame: DstMAC(6) + SrcMAC(6) + EtherType(2) + Payload + FCS(4)
+	frame := make([]byte, 0, 14+len(payload)+4)
 	frame = append(frame, broadcastMAC[:]...)                             // Destination: broadcast
 	frame = append(frame, ourMAC[:]...)                                   // Source: our MAC
 	frame = append(frame, byte(etherTypeExp>>8), byte(etherTypeExp&0xFF)) // EtherType
 	frame = append(frame, payload...)
-	return frame
+	return appendFCS(frame) // Add 4-byte FCS
 }
 
 var zrx int
@@ -214,6 +214,30 @@ func macString(mac []byte) string {
 		}
 	}
 	return string(buf[:])
+}
+
+// appendFCS calculates and appends the 4-byte Ethernet FCS (CRC-32) to the frame.
+func appendFCS(frame []byte) []byte {
+	crc := ethernetCRC32(frame)
+	// Append FCS in little-endian order (inverted CRC)
+	return append(frame, byte(crc), byte(crc>>8), byte(crc>>16), byte(crc>>24))
+}
+
+// ethernetCRC32 calculates the IEEE 802.3 CRC-32 for Ethernet FCS.
+func ethernetCRC32(data []byte) uint32 {
+	const poly = 0xedb88320
+	crc := uint32(0xffffffff)
+	for _, b := range data {
+		for bit := 0; bit < 8; bit++ {
+			if (crc^uint32(b))&1 != 0 {
+				crc = (crc >> 1) ^ poly
+			} else {
+				crc >>= 1
+			}
+			b >>= 1
+		}
+	}
+	return ^crc
 }
 
 // ethernetFrameLength scans data calculating CRC until it finds valid FCS.
