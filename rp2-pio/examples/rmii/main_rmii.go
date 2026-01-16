@@ -77,6 +77,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	ad := NewANAR().With10M()
+	err = rmii.SetAdvertisement(ad)
+	if err != nil {
+		panic(err)
+	}
 	id1, _ := rmii.ID1()
 	id2, _ := rmii.ID2()
 	println("first addr set:", rmii.PHYAddr(), "id1,id2:", id1, id2)
@@ -130,6 +135,11 @@ func main() {
 			lastTx = time.Now()
 		}
 		if rcved {
+			print("buf:")
+			for i := range 32 {
+				print(rxBuf[i], " ")
+			}
+			println("")
 			n := ethernetFrameLength(rxBuf[:])
 			parseAndPrintFrame(rxBuf[:n])
 			rcved = false
