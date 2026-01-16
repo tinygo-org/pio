@@ -26,10 +26,24 @@ const (
 )
 
 func main() {
+	// Do initial test
 	time.Sleep(2 * time.Second)
 	println("start program")
+	var mdio MDIO
+	mdio.Configure(pinMDIO, pinMDC, 10_000, true)
+	var addrs [32]uint8
+	n, err := FindClause22PHYs(&mdio, addrs[:])
+	if n >= 1 {
+		println("found addrs:", addrs[0], "...")
+	} else {
+		println("no addrs")
+		if err != nil {
+			println("error:", err.Error())
+		}
+	}
+
 	var rmii RMII
-	err := rmii.Configure(RMIIConfig{
+	err = rmii.Configure(RMIIConfig{
 		PIO:       pio.PIO0,
 		TxPinBase: pinTxBase,
 		RxPinBase: pinRxBase,

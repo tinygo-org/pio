@@ -18,6 +18,50 @@ const (
 	c45Write  = c45bit | 0b01
 )
 
+// MDIOBus is a HAL for MDIO bus access supporting both Clause 22 and Clause 45 devices.
+// Implementations should use devaddr to select the framing:
+//   - devaddr=0: Clause 22 framing (devaddr ignored in transaction)
+//   - devaddr>=1: Clause 45 framing (PMA/PMD=1, WIS=2, PCS=3, PHY XS=4, DTE XS=5, AN=7)
+//
+// Register address range: Clause 22 uses 0-31, Clause 45 uses 0-65535.
+// Invalid combinations of devaddr and regAddr may or may not return an error
+// depending on the implementation or result in undefined behavior.
+// To avoid this wrap your MDIOBus interfaces with a wrapper type that checks validity of ranges.
+type MDIOBus interface {
+	// Read reads a 16-bit register from the PHY.
+	Read(phyAddr, devAddr uint8, regAddr uint16) (value uint16, err error)
+	// Write writes a 16-bit value to a PHY register.
+	Write(phyAddr, devAddr uint8, regAddr, value uint16) error
+}
+
+// FindPHYs finds all regular non-clause45 PHYs on the MDIO bus and writes them to dst.
+func FindClause22PHYs(mdio MDIOBus, dst []uint8) (n int, err error) {
+	const maxAddr = 31
+	const regBasicStatus = 0x01
+	if len(dst) < 32 {
+		return -1, errors.New("require buffer length 32 for FindPHYs")
+	}
+	n = 0
+	for addr := uint8(0); addr <= maxAddr; addr++ {
+		// Future proofing for supported clause 45.
+		// Check PMA/PMD device (DEVAD 1), register 0 (control)
+		var val uint16
+		val, err = mdio.Read(addr, 0, BMCRAddr)
+		if err != nil {
+			continue
+		}
+		// Basic status has some bits that must be zero and one, so if this check fails then we know its a bad address.
+		if val != 0xffff && val != 0x0000 {
+			dst[n] = addr
+			n++
+		}
+		time.Sleep(150 * time.Microsecond)
+	}
+	return n, err
+}
+
+var _ MDIOBus = (*MDIO)(nil) // compile time guarantee of interface implementation.
+
 // MDIO provides MDIO/MDC management interface for PHY register access
 // as the STA (Management station, this implementation) which communicates to the PHY (Physical layer device).
 // Inspired by linux/v3.13.1/source/drivers/net/phy/mdio-bitbang.c
@@ -34,7 +78,7 @@ func (m *MDIO) Configure(dataPin, clkPin machine.Pin, baud int, zmdio bool) {
 	m.zmdio = zmdio
 	m.data = dataPin
 	m.clk = clkPin
-	m.reset()
+	// m.reset()
 }
 
 // FindPHYs finds all regular non-clause45 PHYs on the MDIO bus and writes them to dst.
@@ -46,7 +90,7 @@ func (m *MDIO) FindPHYs(dst []uint8) int {
 	}
 	written := 0
 	for addr := uint8(0); addr <= maxAddr; addr++ {
-		val, err := m.read(addr, regBasicStatus)
+		val, err := m.readLegacy(addr, regBasicStatus)
 		if err != nil {
 			continue
 		}
@@ -61,22 +105,15 @@ func (m *MDIO) FindPHYs(dst []uint8) int {
 }
 
 // Read performs regular read of a PHY's register.
-func (m *MDIO) Read(phy, reg uint8) (uint16, error) {
-	return m.read(phy, uint32(reg))
-}
-
-// Read performs regular read of a PHY's register.
-func (m *MDIO) Write(phy, reg uint8, value uint16) error {
-	m.write(phy, uint32(reg), value)
-	return nil
-}
-
-func (m *MDIO) read(phy uint8, reg uint32) (uint16, error) {
-	if reg&miaddrc45 != 0 {
-		reg = m.cmdAddr(phy, reg)
-		m.cmd(c45Read, phy, uint8(reg))
+func (m *MDIO) Read(phyAddr, devAddr uint8, regAddr uint16) (uint16, error) {
+	return m.readLegacy(phyAddr, uint32(regAddr))
+	isC45 := devAddr != 0
+	if isC45 {
+		println("C45 enabled")
+		m.cmdAddr2(phyAddr, devAddr, regAddr)
+		m.cmd(c45Read, phyAddr, devAddr)
 	} else {
-		m.cmd(mdioRead, phy, uint8(reg))
+		m.cmd(mdioRead, phyAddr, uint8(regAddr))
 	}
 	m.setDir(false)
 	// Check turnaround bit, PHY should drive it to zero.
@@ -93,12 +130,14 @@ func (m *MDIO) read(phy uint8, reg uint32) (uint16, error) {
 	return ret, nil
 }
 
-func (m *MDIO) write(phy uint8, reg uint32, value uint16) {
-	if reg&miaddrc45 != 0 {
-		reg = m.cmdAddr(phy, reg)
-		m.cmd(c45Write, phy, uint8(reg))
+// Read performs regular read of a PHY's register.
+func (m *MDIO) Write(phyAddr, devAddr uint8, regAddr, value uint16) error {
+	isC45 := devAddr != 0
+	if isC45 {
+		m.cmdAddr2(phyAddr, devAddr, regAddr)
+		m.cmd(c45Write, phyAddr, devAddr)
 	} else {
-		m.cmd(mdioWrite, phy, uint8(reg))
+		m.cmd(mdioWrite, phyAddr, uint8(regAddr))
 	}
 	// send turnaround (10)
 	m.sendBit(true)
@@ -107,20 +146,18 @@ func (m *MDIO) write(phy uint8, reg uint32, value uint16) {
 	m.sendNum(value, 16)
 	m.setDir(false)
 	m.getBit()
+	return nil
 }
 
-func (m *MDIO) cmdAddr(phy uint8, addr uint32) uint32 {
-	devAddr := (addr >> 16) & 0x1f
-	reg := addr & 0xffff
-	m.cmd(c45Addr, phy, uint8(devAddr))
+func (m *MDIO) cmdAddr2(phy, dev uint8, reg uint16) {
+	m.cmd(c45Addr, phy, dev)
 	// turnaround 10.
 	m.sendBit(true)
 	m.sendBit(false)
 
-	m.sendNum(uint16(reg), 16)
+	m.sendNum(reg, 16)
 	m.setDir(false)
 	m.getBit()
-	return devAddr
 }
 
 func (m *MDIO) cmd(op uint16, phy uint8, reg uint8) {
@@ -252,4 +289,58 @@ func b2u8(b bool) uint8 {
 		return 1
 	}
 	return 0
+}
+
+// Legacy functions.
+
+func (m *MDIO) readLegacy(phy uint8, reg uint32) (uint16, error) {
+	if reg&miaddrc45 != 0 {
+		reg = m.cmdAddrLegacy(phy, reg)
+		m.cmd(c45Read, phy, uint8(reg))
+	} else {
+		m.cmd(mdioRead, phy, uint8(reg))
+	}
+	m.setDir(false)
+	// Check turnaround bit, PHY should drive it to zero.
+	if m.getBit() {
+		// PHY did not drive low, as would be expected.
+		// Ensure flush:
+		for range 32 {
+			m.getBit()
+		}
+		return 0xffff, errors.New("PHY did not drive turnaround low")
+	}
+	ret := m.getNum(16)
+	m.getBit()
+	return ret, nil
+}
+
+func (m *MDIO) writeLegacy(phy uint8, reg uint32, value uint16) {
+	if reg&miaddrc45 != 0 {
+		reg = m.cmdAddrLegacy(phy, reg)
+		m.cmd(c45Write, phy, uint8(reg))
+	} else {
+		m.cmd(mdioWrite, phy, uint8(reg))
+	}
+	// send turnaround (10)
+	m.sendBit(true)
+	m.sendBit(false)
+
+	m.sendNum(value, 16)
+	m.setDir(false)
+	m.getBit()
+}
+
+func (m *MDIO) cmdAddrLegacy(phy uint8, addr uint32) uint32 {
+	devAddr := (addr >> 16) & 0x1f
+	reg := addr & 0xffff
+	m.cmd(c45Addr, phy, uint8(devAddr))
+	// turnaround 10.
+	m.sendBit(true)
+	m.sendBit(false)
+
+	m.sendNum(uint16(reg), 16)
+	m.setDir(false)
+	m.getBit()
+	return devAddr
 }
