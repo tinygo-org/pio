@@ -99,11 +99,21 @@ func main() {
 	}
 	println("\nlink up:", linkMode.SpeedMbps(), "Mbps, full-duplex:", linkMode.IsFullDuplex())
 
-	// Enable RMII Tx/Rx.
-	rmii.rxtx.SetEnabled(true)
-
-	// Main loop: send periodic packets and receive.
+	// Set up RX with callback.
 	var rxBuf [1518]byte // Max Ethernet frame size
+	var rcved int
+	rmii.rxtx.SetRxHandler(rxBuf[:], func(n int) {
+		rcved = n
+	})
+
+	// Start receiving.
+	err = rmii.rxtx.StartRx()
+	if err != nil {
+		panic(err)
+	}
+	println("RX started")
+
+	// Main loop: send periodic packets.
 	var txSeq uint32
 	var lastTx time.Time
 	for {
@@ -119,14 +129,14 @@ func main() {
 			}
 			lastTx = time.Now()
 		}
-
-		// Try to receive a packet (non-blocking check).
-		err := rmii.rxtx.Rx8(rxBuf[:])
-		if err == nil {
-			// Parse and print received frame.
-			parseAndPrintFrame(rxBuf[:])
+		if rcved > 0 {
+			parseAndPrintFrame(rxBuf[:n])
+			rcved = 0
+			err = rmii.rxtx.StartRx()
+			if err != nil {
+				panic(err)
+			}
 		}
-
 		time.Sleep(10 * time.Millisecond)
 	}
 }
@@ -152,10 +162,12 @@ func buildTestFrame(seq uint32) []byte {
 }
 
 var zrx int
+var buf [64]byte
 
 // parseAndPrintFrame parses an Ethernet frame and prints info.
 func parseAndPrintFrame(frame []byte) {
 	if len(frame) < 14 {
+		println("rx too small", len(frame))
 		return // Too short for Ethernet header
 	}
 	var z [6]byte

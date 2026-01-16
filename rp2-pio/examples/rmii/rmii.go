@@ -21,7 +21,7 @@ type RMIIConfig struct {
 
 	MDIOPin machine.Pin
 	MDCPin  machine.Pin
-	Baud    int
+	Baud    uint32
 }
 
 func (rmii *RMII) Configure(cfg RMIIConfig) error {
@@ -47,7 +47,7 @@ func (rmii *RMII) Configure(cfg RMIIConfig) error {
 		return err
 	}
 	rxtx, err := piolib.NewRMIITxRx(txSM, rxSM, piolib.RMIITxRxConfig{
-		Baud:      uint32(cfg.Baud),
+		Baud:      cfg.Baud,
 		TxPin:     cfg.TxPinBase,
 		RxPin:     cfg.RxPinBase,
 		CRSDVPin:  cfg.CRSDV,
