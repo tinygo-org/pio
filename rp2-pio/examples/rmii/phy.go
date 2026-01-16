@@ -172,6 +172,26 @@ func (a ANAR) Without100M() ANAR {
 	return a &^ (ANAR100Half | ANAR100Full | ANAR100BaseT4)
 }
 
+// LinkMode returns the highest priority LinkMode from the ANAR speed bits.
+// Priority order per IEEE 802.3 Annex 28B.3.
+// Returns LinkDown if no speed bits are set.
+func (a ANAR) LinkMode() LinkMode {
+	switch {
+	case a&ANAR100Full != 0:
+		return Link100FDX
+	case a&ANAR100BaseT4 != 0:
+		return Link100T4
+	case a&ANAR100Half != 0:
+		return Link100HDX
+	case a&ANAR10Full != 0:
+		return Link10FDX
+	case a&ANAR10Half != 0:
+		return Link10HDX
+	default:
+		return LinkDown
+	}
+}
+
 // LinkMode represents the negotiated Ethernet link speed and duplex mode.
 //
 // Naming convention:
@@ -396,33 +416,18 @@ func (phy *PHY) NegotiatedLink() (LinkMode, error) {
 	}
 
 	// Read our advertisement
-	anar, err := phy.rread(ANARAddr)
+	anar, err := phy.Advertisement()
 	if err != nil {
 		return LinkDown, err
 	}
 
 	// Read link partner's advertisement
-	anlpar, err := phy.rread(ANLPARAddr)
+	anlpar, err := phy.LinkPartnerAdvertisement()
 	if err != nil {
 		return LinkDown, err
 	}
 
 	// Common capabilities = what both sides support
-	common := ANAR(anar) & ANAR(anlpar)
-
-	// Select highest common capability (priority order per IEEE 802.3 Annex 28B.3)
-	switch {
-	case common&ANAR100Full != 0:
-		return Link100FDX, nil
-	case common&ANAR100BaseT4 != 0:
-		return Link100T4, nil
-	case common&ANAR100Half != 0:
-		return Link100HDX, nil
-	case common&ANAR10Full != 0:
-		return Link10FDX, nil
-	case common&ANAR10Half != 0:
-		return Link10HDX, nil
-	default:
-		return LinkDown, nil
-	}
+	common := anar & anlpar
+	return common.LinkMode(), nil
 }
