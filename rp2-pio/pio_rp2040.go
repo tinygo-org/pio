@@ -62,7 +62,7 @@ func interruptSet(nblock, irq uint8) {
 	// Need big switch since interrupt.New needs go constant for interrupt ID.
 	switch nblock {
 	case 0:
-		if irq == 1 {
+		if irq == 0 {
 			interrupt.New(rp.IRQ_PIO0_IRQ_0, handleInterrupt).Enable()
 			irqSet(rp.IRQ_PIO0_IRQ_0, true)
 		} else {
@@ -70,7 +70,7 @@ func interruptSet(nblock, irq uint8) {
 			irqSet(rp.IRQ_PIO0_IRQ_1, true)
 		}
 	case 1:
-		if irq == 1 {
+		if irq == 0 {
 			interrupt.New(rp.IRQ_PIO1_IRQ_0, handleInterrupt).Enable()
 			irqSet(rp.IRQ_PIO1_IRQ_0, true)
 		} else {

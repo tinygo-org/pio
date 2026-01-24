@@ -265,13 +265,15 @@ func (pio *PIO) Version() uint8 {
 // HW returns a pointer to the PIO's hardware registers.
 func (pio *PIO) HW() *pioHW { return (*pioHW)(unsafe.Pointer(pio.hw)) }
 
+type irqhandler func(pioblock, irqZeroOrOne uint8, source IRQSource)
+
 // global interrupt handler variables.
 var (
-	irqhandlers [numPIO][2]func(pioBlock, irq uint8)
+	irqhandlers [numPIO][2]irqhandler
 	setirq      [numPIO][2]bool
 )
 
-func (pio *PIO) SetInterrupt(irqnumZeroOrOne uint8, sourceMask IRQSource, callback func(pioBlock, irq uint8)) error {
+func (pio *PIO) SetInterrupt(irqnumZeroOrOne uint8, sourceMask IRQSource, callback irqhandler) error {
 	const a = rp.IRQ_PIO0_IRQ_0
 	nblock := pio.blockIndex()
 	if callback == nil {
@@ -321,10 +323,15 @@ func handleInterrupt(intr interrupt.Interrupt) {
 		for irq = 0; irq < 2; irq++ {
 			stat := hw.IRQ_INT[irq].S.Get()
 			if stat != 0 {
-				p.acknowledgeInterrupt(irq)
+				// Extract PIO IRQ flags from bits 8-15 and clear them.
+				// FIFO interrupts (bits 0-7) auto-clear on FIFO read/write.
+				irqFlags := uint8((stat >> 8) & 0xFF)
+				if irqFlags != 0 {
+					hw.IRQ.Set(uint32(irqFlags))
+				}
 				callback := irqhandlers[block][irq]
 				if callback != nil {
-					callback(block, irq)
+					callback(block, irq, IRQSource(stat))
 				}
 			}
 		}
@@ -333,28 +340,29 @@ func handleInterrupt(intr interrupt.Interrupt) {
 
 type IRQSource uint32
 
-// IRQS0..7 are statemachine interrupt source flags, usually via IRQ instruction.
+// IRQSource constants are bitmasks for interrupt sources in IRQ_INT[x].E and IRQ_INT[x].S registers.
+// IRQS0..7 are statemachine interrupt source flags, usually set via IRQ instruction.
 // No relation between IRQS number and statemachine. A statemachine can use any flag.
 const (
-	IRQSRxFIFONotEmpty0 IRQSource = iota
-	IRQSRxFIFONotEmpty1
-	IRQSRxFIFONotEmpty2
-	IRQSRxFIFONotEmpty3
+	IRQSRxFIFONotEmpty0 IRQSource = 1 << iota // bit 0
+	IRQSRxFIFONotEmpty1                       // bit 1
+	IRQSRxFIFONotEmpty2                       // bit 2
+	IRQSRxFIFONotEmpty3                       // bit 3
 
 	// these are named oddly- is their name semantically correct? Not exporting for now...
-	irqsTxFIFONotFull0
-	irqsTxFIFONotFull1
-	irqsTxFIFONotFull2
-	irqsTxFIFONotFull3
+	irqsTxFIFONotFull0 // bit 4
+	irqsTxFIFONotFull1 // bit 5
+	irqsTxFIFONotFull2 // bit 6
+	irqsTxFIFONotFull3 // bit 7
 
-	IRQS0
-	IRQS1
-	IRQS2
-	IRQS3
-	IRQS4
-	IRQS5
-	IRQS6
-	IRQS7 // =15
+	IRQS0 // bit 8 - PIO IRQ flag 0
+	IRQS1 // bit 9 - PIO IRQ flag 1
+	IRQS2 // bit 10 - PIO IRQ flag 2
+	IRQS3 // bit 11 - PIO IRQ flag 3
+	IRQS4 // bit 12 - PIO IRQ flag 4
+	IRQS5 // bit 13 - PIO IRQ flag 5
+	IRQS6 // bit 14 - PIO IRQ flag 6
+	IRQS7 // bit 15 - PIO IRQ flag 7
 )
 
 // Programmable IO block
