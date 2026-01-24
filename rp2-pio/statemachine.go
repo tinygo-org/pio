@@ -318,6 +318,11 @@ func (sm StateMachine) SetWrap(target, wrap uint8) {
 	)
 }
 
+// PC returns the current program counter address of sm.
+func (sm StateMachine) PC() uint8 {
+	return uint8(sm.HW().ADDR.Get())
+}
+
 // SetX sets the X register of a state machine. The state machine should be halted beforehand.
 func (sm StateMachine) SetX(value uint32) {
 	sm.setDst(OutDestX, value)

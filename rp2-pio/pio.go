@@ -6,6 +6,7 @@ import (
 	"device/rp"
 	"errors"
 	"machine"
+	"runtime/interrupt"
 	"runtime/volatile"
 	"unsafe"
 )
@@ -264,6 +265,98 @@ func (pio *PIO) Version() uint8 {
 // HW returns a pointer to the PIO's hardware registers.
 func (pio *PIO) HW() *pioHW { return (*pioHW)(unsafe.Pointer(pio.hw)) }
 
+// global interrupt handler variables.
+var (
+	irqhandlers [numPIO][2]func(pioBlock, irq uint8)
+	setirq      [numPIO][2]bool
+)
+
+func (pio *PIO) SetInterrupt(irqnumZeroOrOne uint8, sourceMask IRQSource, callback func(pioBlock, irq uint8)) error {
+	const a = rp.IRQ_PIO0_IRQ_0
+	nblock := pio.blockIndex()
+	if callback == nil {
+		// Delete callback.
+		pio.setIRQSourceMask(irqnumZeroOrOne, sourceMask, false)
+		irqhandlers[nblock][irqnumZeroOrOne] = nil
+		return nil
+	} else if irqhandlers[nblock][irqnumZeroOrOne] != nil {
+		return machine.ErrNoPinChangeChannel
+	}
+	pio.setIRQSourceMask(irqnumZeroOrOne, sourceMask, true)
+	irqhandlers[nblock][irqnumZeroOrOne] = callback
+	if setirq[nblock][irqnumZeroOrOne] {
+		return nil // interrupt has already been enabled. Exit.
+	}
+	interruptSet(nblock, irqnumZeroOrOne)
+	setirq[nblock][irqnumZeroOrOne] = true
+	return nil
+}
+
+func (pio *PIO) setIRQSourceMask(irqnumZeroOrOne uint8, sourcemask IRQSource, enabled bool) {
+	const intrbits = 0x0000_ffff
+	if sourcemask > intrbits || irqnumZeroOrOne > 1 {
+		panic("invalid SetIRQ arg")
+	}
+	hw := pio.HW()
+	// pio.acknowledgeInterrupt()
+	inte := &hw.IRQ_INT[irqnumZeroOrOne].E
+	if enabled {
+		inte.SetBits(uint32(sourcemask))
+	} else {
+		inte.ClearBits(uint32(sourcemask))
+	}
+}
+
+// acknowledgeInterrupt clears a particular PIO interrupt number between 0..7.
+func (pio *PIO) acknowledgeInterrupt(pioInterruptNumber uint8) {
+	pio.HW().IRQ.Set(1 << pioInterruptNumber)
+}
+
+// this is the global interrupt handler for PIO interrupts.
+func handleInterrupt(intr interrupt.Interrupt) {
+	var block, irq uint8
+	for block = 0; block < numPIO; block++ {
+		p := getPIO(block)
+		hw := p.HW()
+		for irq = 0; irq < 2; irq++ {
+			stat := hw.IRQ_INT[irq].S.Get()
+			if stat != 0 {
+				p.acknowledgeInterrupt(irq)
+				callback := irqhandlers[block][irq]
+				if callback != nil {
+					callback(block, irq)
+				}
+			}
+		}
+	}
+}
+
+type IRQSource uint32
+
+// IRQS0..7 are statemachine interrupt source flags, usually via IRQ instruction.
+// No relation between IRQS number and statemachine. A statemachine can use any flag.
+const (
+	IRQSRxFIFONotEmpty0 IRQSource = iota
+	IRQSRxFIFONotEmpty1
+	IRQSRxFIFONotEmpty2
+	IRQSRxFIFONotEmpty3
+
+	// these are named oddly- is their name semantically correct? Not exporting for now...
+	irqsTxFIFONotFull0
+	irqsTxFIFONotFull1
+	irqsTxFIFONotFull2
+	irqsTxFIFONotFull3
+
+	IRQS0
+	IRQS1
+	IRQS2
+	IRQS3
+	IRQS4
+	IRQS5
+	IRQS6
+	IRQS7 // =15
+)
+
 // Programmable IO block
 type pioHW struct {
 	CTRL              volatile.Register32 // 0x0
@@ -287,9 +380,9 @@ type pioHW struct {
 }
 
 type irqINTHW struct {
-	E volatile.Register32
-	F volatile.Register32
-	S volatile.Register32
+	E volatile.Register32 // Interrupt enable.
+	F volatile.Register32 // Interrupt force.
+	S volatile.Register32 // Interrupt status after masking.
 }
 
 const (
