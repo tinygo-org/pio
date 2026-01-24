@@ -12,7 +12,9 @@ import (
 )
 
 // irqTriggered is set to true when the interrupt handler fires.
-var irqTriggered bool
+// Remember, we can't do anything that blocks from interrupt,
+// that includes printing- so we need an external variable.
+var irqTriggered bool = false
 
 func main() {
 	time.Sleep(2 * time.Second)
@@ -27,17 +29,19 @@ func main() {
 	if err != nil {
 		panic("failed to set interrupt: " + err.Error())
 	}
-	// Simple PIO program that immediately sets IRQ flag 0.
+	// Simple PIO program that sets IRQ flag 0 once, then loops forever.
 	// The program:
 	//   irq set 0    ; Set IRQ flag 0
-	//   .wrap        ; Loop forever (back to irq set)
+	//   jmp 1        ; Loop forever (jump to self)
 	//
-	// We use wrap to loop back so the program continues running,
-	// but the IRQ should trigger on the first instruction.
+	// We must NOT wrap back to the IRQ instruction, otherwise it creates
+	// an interrupt storm that overwhelms the CPU.
+	asm := pio.AssemblerV0{}
 	var (
 		irqSetOrigin       int8 = -1
 		irqSetInstructions      = []uint16{
-			pio.AssemblerV0{}.IRQSet(false, 0).Encode(), // irq set 0
+			asm.IRQSet(false, 0).Encode(),      // 0: irq set 0
+			asm.Jmp(pio.JmpAlways, 1).Encode(), // 1: jmp 1 (loop forever)
 		}
 	)
 	offset, err := Pio.AddProgram(irqSetInstructions, irqSetOrigin)
@@ -48,12 +52,9 @@ func main() {
 
 	sm := Pio.StateMachine(0)
 	cfg := pio.DefaultStateMachineConfig()
-	cfg.SetWrap(offset, offset) // Wrap from instruction 0 back to 0
-	println("init")
+	cfg.SetWrap(offset+1, offset+1) // Wrap on the jmp instruction (no-op since it jumps to itself)
 	sm.Init(offset, cfg)
-	println("enable")
 	sm.SetEnabled(true)
-	println("sleep")
 	// Wait a short time for the IRQ to fire.
 	time.Sleep(10 * time.Millisecond)
 
