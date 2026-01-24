@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"machine"
 	"time"
 
@@ -28,8 +29,8 @@ const (
 	pinRefClk = machine.GPIO2
 
 	// RX pins: GPIO 3, 4, 5 (RXD0, RXD1, CRS_DV)
-	pinCRSDV  = machine.GPIO3
-	pinRxBase = machine.GPIO4
+	pinRxBase = machine.GPIO3
+	pinCRSDV  = machine.GPIO5
 
 	// TX pins: GPIO 0, 1, 2 (TXD0, TXD1, TX_EN)
 	pinTxBase = machine.GPIO6
@@ -42,24 +43,11 @@ var ourMAC = [6]byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x01}
 var broadcastMAC = [6]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 
 func main() {
-	// Do initial test
 	time.Sleep(2 * time.Second)
-	println("start program")
-	var mdio MDIOBitBang
-	mdio.Configure(pinMDIO, pinMDC, 10_000, true)
-	var addrs [32]uint8
-	n, err := FindClause22PHYs(&mdio, addrs[:])
-	if n >= 1 {
-		println("found addrs:", addrs[0], "...")
-	} else {
-		println("no addrs")
-		if err != nil {
-			println("error:", err.Error())
-		}
-	}
+	println("=== RMII Loopback Test ===")
 
 	var rmii RMII
-	err = rmii.Configure(RMIIConfig{
+	err := rmii.Configure(RMIIConfig{
 		PIO:       pio.PIO0,
 		TxPinBase: pinTxBase,
 		RxPinBase: pinRxBase,
@@ -67,48 +55,40 @@ func main() {
 		RefClk:    pinRefClk,
 		MDIOPin:   pinMDIO,
 		MDCPin:    pinMDC,
-		Baud:      10_000_000,
+		Baud:      100_000_000,
 	})
 	if err != nil {
 		panic(err)
 	}
-	println("RMII configured")
-	err = rmii.SetFirstAddr()
-	if err != nil {
-		panic(err)
-	}
-	ad := NewANAR().With10M()
-	err = rmii.SetAdvertisement(ad)
-	if err != nil {
-		panic(err)
-	}
+
 	id1, _ := rmii.ID1()
 	id2, _ := rmii.ID2()
-	println("first addr set:", rmii.PHYAddr(), "id1,id2:", id1, id2)
-	err = rmii.EnableAutoNegotiation(true)
+	println("PHY addr:", rmii.PHYAddr(), "id:", id1, id2)
+
+	// Force 100Mbps full-duplex (no auto-neg needed for loopback cable)
+	err = rmii.SetupForced(Link100FDX)
 	if err != nil {
 		panic(err)
 	}
-	println("control enabled")
+	println("forced 100M-FDX")
 
-	// Wait for link to come up.
+	// Wait for link.
 	println("waiting for link...")
-	var linkMode LinkMode
-	for {
-		linkMode, err = rmii.NegotiatedLink()
-		if err == nil && linkMode != LinkDown {
+	for i := 0; i < 20; i++ {
+		up, _ := rmii.IsLinkUp()
+		if up {
+			println("link up!")
 			break
 		}
 		print(".")
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(250 * time.Millisecond)
 	}
-	println("\nlink up:", linkMode.SpeedMbps(), "Mbps, full-duplex:", linkMode.IsFullDuplex())
 
 	// Set up RX with callback.
 	var rxBuf [1518]byte // Max Ethernet frame size
-	var rcved bool
+	var gotRx bool
 	rmii.rxtx.SetRxHandler(rxBuf[:], func(b []byte) {
-		rcved = true
+		gotRx = true
 	})
 
 	// Start receiving.
@@ -118,37 +98,46 @@ func main() {
 	}
 	println("RX started")
 
-	// Main loop: send periodic packets.
-	var txSeq uint32
-	var lastTx time.Time
+	// Loopback test loop: send frame, wait for it to come back.
+	var seq uint32
 	for {
-		// Send a broadcast packet every 5 seconds.
-		if time.Since(lastTx) >= 5*time.Second {
-			txSeq++
-			frame := buildTestFrame(txSeq)
-			err := rmii.rxtx.Tx8(frame)
-			if err != nil {
-				println("tx error:", err.Error())
+		seq++
+		txFrame := buildTestFrame(seq)
+
+		err := rmii.rxtx.Tx8(txFrame)
+		if err != nil {
+			println("tx err:", err.Error())
+		} else {
+			println("tx seq=", seq, "len=", len(txFrame))
+		}
+
+		// Wait for loopback (should come back quickly via cable)
+		deadline := time.Now().Add(100 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			if gotRx {
+				break
+			}
+			time.Sleep(time.Millisecond)
+		}
+
+		if gotRx {
+			println("rx: got frame")
+			if bytes.Equal(rxBuf[:len(txFrame)], txFrame) {
+				println("  MATCH!")
 			} else {
-				println("tx: sent frame seq=", txSeq)
+				print("  mismatch, first 20 bytes: ")
+				for i := 0; i < 20; i++ {
+					print(rxBuf[i], " ")
+				}
+				println()
 			}
-			lastTx = time.Now()
+			gotRx = false
+			rmii.rxtx.StartRx()
+		} else {
+			println("  no rx (timeout)")
 		}
-		if rcved {
-			print("buf:")
-			for i := range 32 {
-				print(rxBuf[i], " ")
-			}
-			println("")
-			n := ethernetFrameLength(rxBuf[:])
-			parseAndPrintFrame(rxBuf[:n])
-			rcved = false
-			err = rmii.rxtx.StartRx()
-			if err != nil {
-				panic(err)
-			}
-		}
-		time.Sleep(10 * time.Millisecond)
+
+		time.Sleep(2 * time.Second)
 	}
 }
 
@@ -177,25 +166,29 @@ var buf [64]byte
 
 // parseAndPrintFrame parses an Ethernet frame and prints info.
 func parseAndPrintFrame(frame []byte) {
-	if len(frame) < 14 {
-		println("rx too small", len(frame))
-		return // Too short for Ethernet header
-	}
 	var z [6]byte
 	// Ethernet header: DstMAC(6) + SrcMAC(6) + EtherType(2)
+	dstMAC := frame[0:6]
 	srcMAC := frame[6:12]
-	if bytes.Equal(srcMAC, z[:]) {
+	if bytes.Equal(srcMAC, z[:]) && bytes.Equal(dstMAC, z[:]) {
 		zrx++
 		if zrx%100 == 0 {
 			println("received zeroed frames zrx=", zrx)
 		}
 		return
 	}
-	etherType := uint16(frame[12])<<8 | uint16(frame[13])
+	etherType := binary.BigEndian.Uint16(frame[12:])
 	payloadLen := len(frame) - 14
 	isIPv4 := etherType == 0x0800
+	println("\trx: src=", macString(srcMAC), "len=", payloadLen, "ethertype=", uintptr(etherType), "ipv4=", isIPv4)
 
-	println("rx: src=", macString(srcMAC), "len=", payloadLen, "ipv4=", isIPv4)
+	// Print IPv4 addresses if this is an IPv4 frame.
+	// IPv4 header: starts at byte 14, src IP at offset 12, dst IP at offset 16.
+	if isIPv4 && len(frame) >= 34 { // 14 (eth) + 20 (min IPv4 header)
+		srcIP := frame[26:30] // Ethernet(14) + IPv4 src offset(12)
+		dstIP := frame[30:34] // Ethernet(14) + IPv4 dst offset(16)
+		println("\tipv4: src=", ipString(srcIP), "dst=", ipString(dstIP))
+	}
 }
 
 // macString formats a MAC address as a string.
@@ -214,6 +207,40 @@ func macString(mac []byte) string {
 		}
 	}
 	return string(buf[:])
+}
+
+// ipString formats an IPv4 address as a dotted decimal string.
+func ipString(ip []byte) string {
+	if len(ip) < 4 {
+		return "?"
+	}
+	// Simple decimal formatting without fmt package.
+	var buf [15]byte // max "255.255.255.255"
+	n := 0
+	for i := 0; i < 4; i++ {
+		if i > 0 {
+			buf[n] = '.'
+			n++
+		}
+		n += putUint8(buf[n:], ip[i])
+	}
+	return string(buf[:n])
+}
+
+// putUint8 writes a uint8 as decimal digits and returns bytes written.
+func putUint8(buf []byte, v uint8) int {
+	if v >= 100 {
+		buf[0] = '0' + v/100
+		buf[1] = '0' + (v/10)%10
+		buf[2] = '0' + v%10
+		return 3
+	} else if v >= 10 {
+		buf[0] = '0' + v/10
+		buf[1] = '0' + v%10
+		return 2
+	}
+	buf[0] = '0' + v
+	return 1
 }
 
 // appendFCS calculates and appends the 4-byte Ethernet FCS (CRC-32) to the frame.

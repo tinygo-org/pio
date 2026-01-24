@@ -6,10 +6,8 @@ import (
 )
 
 const (
-	regBasicControl = 0x00
-	regBasicStatus  = 0x01
-	regPhyId1       = 0x02
-	regPhyId2       = 0x03
+	regPhyId1 = 0x02
+	regPhyId2 = 0x03
 
 	regAutoNegotiationAdvertisement      = 0x04
 	regAutoNegotiationLinkPartnerAbility = 0x05
@@ -76,18 +74,18 @@ const (
 	ANLPARAddr = 0x05
 	ANERAddr   = 0x06
 
-	ANARSelector    ANAR = 0x001f // Protocol selector mask
+	ANARSelector     ANAR = 0x001f // Protocol selector mask
 	ANARSelector8023 ANAR = 0x0001 // IEEE 802.3 selector value (required)
-	ANAR10Half      ANAR = 0x0020 // 10BASE-T half-duplex
-	ANAR10Full      ANAR = 0x0040 // 10BASE-T full-duplex
-	ANAR100Half     ANAR = 0x0080 // 100BASE-TX half-duplex
-	ANAR100Full     ANAR = 0x0100 // 100BASE-TX full-duplex
-	ANAR100BaseT4   ANAR = 0x0200 // 100BASE-T4
-	ANARPause       ANAR = 0x0400 // Pause capability
-	ANARPauseAsym   ANAR = 0x0800 // Asymmetric pause
-	ANARRemoteFault ANAR = 0x2000 // Remote fault
-	ANARAck         ANAR = 0x4000 // Acknowledge (ANLPAR only)
-	ANARNextPage    ANAR = 0x8000 // Next page capable
+	ANAR10Half       ANAR = 0x0020 // 10BASE-T half-duplex
+	ANAR10Full       ANAR = 0x0040 // 10BASE-T full-duplex
+	ANAR100Half      ANAR = 0x0080 // 100BASE-TX half-duplex
+	ANAR100Full      ANAR = 0x0100 // 100BASE-TX full-duplex
+	ANAR100BaseT4    ANAR = 0x0200 // 100BASE-T4
+	ANARPause        ANAR = 0x0400 // Pause capability
+	ANARPauseAsym    ANAR = 0x0800 // Asymmetric pause
+	ANARRemoteFault  ANAR = 0x2000 // Remote fault
+	ANARAck          ANAR = 0x4000 // Acknowledge (ANLPAR only)
+	ANARNextPage     ANAR = 0x8000 // Next page capable
 
 	// Convenience masks
 	ANARSpeedMask ANAR = ANAR10Half | ANAR10Full | ANAR100Half | ANAR100Full | ANAR100BaseT4
@@ -301,7 +299,7 @@ func (rmii *PHY) EnableAutoNegotiation(b bool) error {
 	} else {
 		ctl &^= BMCRANEnable
 	}
-	err = rmii.rwrite(regBasicControl, uint16(ctl))
+	err = rmii.rwrite(BMCRAddr, uint16(ctl))
 	if err != nil {
 		return err
 	}
@@ -411,6 +409,21 @@ func (rmii *PHY) rread(regaddr uint16) (uint16, error) {
 }
 func (rmii *PHY) rwrite(regaddr, value uint16) error {
 	return rmii.mdio.Write(rmii.phyaddr, rmii.isClause45, regaddr, value)
+}
+
+// SetLoopback enables or disables PHY near-end loopback mode (BMCR bit 14).
+// In loopback mode, TX data is routed back to RX internally through PCS/PMA/PMD.
+func (phy *PHY) SetLoopback(enable bool) error {
+	ctl, err := phy.BasicControl()
+	if err != nil {
+		return err
+	}
+	if enable {
+		ctl |= BMCRLoopback
+	} else {
+		ctl &^= BMCRLoopback
+	}
+	return phy.rwrite(BMCRAddr, uint16(ctl))
 }
 
 // NegotiatedLink returns the auto-negotiated link mode using standard MII registers.

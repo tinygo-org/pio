@@ -50,7 +50,6 @@ func (rmii *RMII) Configure(cfg RMIIConfig) error {
 		Baud:      cfg.Baud,
 		TxPin:     cfg.TxPinBase,
 		RxPin:     cfg.RxPinBase,
-		CRSDVPin:  cfg.CRSDV,
 		RefClkPin: cfg.RefClk,
 	})
 	if err != nil {

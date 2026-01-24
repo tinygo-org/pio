@@ -32,10 +32,8 @@ type RMIITxRxConfig struct {
 	Baud uint32
 	// TxPin is the base pin for RMII TX (TXD0, TXD1, TX_EN). Requires 3 consecutive pins.
 	TxPin machine.Pin
-	// RxPin is the base pin for RMII RX (RXD0, RXD1). Requires 2 consecutive pins.
+	// RxPin is the base pin for RMII RX (RXD0, RXD1, CRSDV). Requires 3 consecutive pins.
 	RxPin machine.Pin
-	// CRSDVPin is the Carrier Sense/Data Valid pin.
-	CRSDVPin machine.Pin
 	// RefClkPin is the 50MHz reference clock input from PHY.
 	RefClkPin machine.Pin
 }
@@ -55,13 +53,17 @@ func NewRMIITxRx(smTx, smRx pio.StateMachine, cfg RMIITxRxConfig) (*RMIITxRx, er
 	// RX Program: Wait for sync, then read 2 bits continuously
 	const rxWrapTarget = 6
 	rxProgram := [7]uint16{
+		// First we wait for line deassertion on CRSDV low. Skip current carrier
 		asm.WaitPin(false, 2).Encode(), // wait 0 pin 2 (CRSDV)
 		asm.WaitPin(false, 0).Encode(), // wait 0 pin 0 (RXD0)
 		asm.WaitPin(false, 1).Encode(), // wait 0 pin 1 (RXD1)
-		asm.WaitPin(true, 2).Encode(),  // wait 1 pin 2 (CRSDV)
-		asm.WaitPin(true, 0).Encode(),  // wait 1 pin 0 (RXD0)
-		asm.WaitPin(true, 1).Encode(),  // wait 1 pin 1 (RXD1)
-		rxWrapTarget:                   asm.In(pio.InSrcPins, 2).Encode(), // in pins, 2
+		// Second, we wait for line assertion, which happens when CRSDV is high.
+		asm.WaitPin(true, 2).Encode(), // wait 1 pin 2 (CRSDV)
+		// Third, since CRS_DV assertion is async relative to REF_CLK, RXD[1:0]
+		// is 00 until receive signals are properly decoded. So wait for rising edges.
+		asm.WaitPin(true, 0).Encode(), // wait 1 pin 0 (RXD0)
+		asm.WaitPin(true, 1).Encode(), // wait 1 pin 1 (RXD1)
+		rxWrapTarget:                  asm.In(pio.InSrcPins, 2).Encode(), // in pins, 2
 	}
 
 	rxOffset, err := Pio.AddProgram(rxProgram[:], -1)
@@ -119,10 +121,9 @@ func NewRMIITxRx(smTx, smRx pio.StateMachine, cfg RMIITxRxConfig) (*RMIITxRx, er
 	pinCfg := machine.PinConfig{Mode: Pio.PinMode()}
 	for i := 0; i < 3; i++ {
 		(cfg.TxPin + machine.Pin(i)).Configure(pinCfg)
+		(cfg.RxPin + machine.Pin(i)).Configure(pinCfg)
 	}
-	cfg.RxPin.Configure(pinCfg)
-	(cfg.RxPin + 1).Configure(pinCfg)
-	cfg.CRSDVPin.Configure(pinCfg)
+	crsdvPin := cfg.RxPin + 2
 	cfg.RefClkPin.Configure(machine.PinConfig{Mode: machine.PinInput})
 
 	// Set TX pins as output
@@ -131,7 +132,7 @@ func NewRMIITxRx(smTx, smRx pio.StateMachine, cfg RMIITxRxConfig) (*RMIITxRx, er
 	smTx.SetPinsMasked(0, txPinMask)
 
 	// Set RX pins as input
-	rxPinMask := uint32(0b11<<cfg.RxPin | 1<<cfg.CRSDVPin)
+	rxPinMask := uint32(0b111 << cfg.RxPin)
 	smRx.SetPindirsMasked(0, rxPinMask)
 
 	// Initialize state machines (but don't enable yet)
@@ -146,7 +147,7 @@ func NewRMIITxRx(smTx, smRx pio.StateMachine, cfg RMIITxRxConfig) (*RMIITxRx, er
 		programOffRx: rxOffset,
 		dmaTx:        dmaTx,
 		dmaRx:        dmaRx,
-		crsdvPin:     cfg.CRSDVPin,
+		crsdvPin:     crsdvPin,
 	}, nil
 }
 
@@ -204,13 +205,25 @@ func (r *RMIITxRx) StartRx() error {
 func (r *RMIITxRx) onRxComplete() {
 	// Disable interrupt
 	r.crsdvPin.SetInterrupt(0, nil)
+	remaining := r.dmaRx.hw.TRANS_COUNT.Get()
+	processed := len(r.rxBuf) - int(remaining)
 	// Stop PIO
 	r.smRx.SetEnabled(false)
 	// Abort DMA first (like Sandeep's implementation)
+
 	r.dmaRx.abort()
 	if r.rxCallback != nil {
-		r.rxCallback(r.rxBuf)
+		r.rxCallback(r.rxBuf[:processed])
 	}
+}
+
+func (r *RMIITxRx) RxRemaining() uint32 {
+	return r.dmaRx.hw.TRANS_COUNT.Get()
+}
+func (r *RMIITxRx) RxCompleted() bool {
+	hw := r.dmaRx.hw
+	t := hw.TRANS_COUNT.Get()
+	return t == 0 || !r.dmaRx.busy()
 }
 
 // RxBytesReceived returns how many bytes have been received so far.
