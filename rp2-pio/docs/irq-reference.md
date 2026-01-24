@@ -28,10 +28,10 @@ This document describes PIO interrupt handling on RP2040/RP2350.
 | IRQSRxFIFONotEmpty1 | 0x002 | 1 | SM1 RX FIFO not empty |
 | IRQSRxFIFONotEmpty2 | 0x004 | 2 | SM2 RX FIFO not empty |
 | IRQSRxFIFONotEmpty3 | 0x008 | 3 | SM3 RX FIFO not empty |
-| irqsTxFIFONotFull0 | 0x010 | 4 | SM0 TX FIFO not full |
-| irqsTxFIFONotFull1 | 0x020 | 5 | SM1 TX FIFO not full |
-| irqsTxFIFONotFull2 | 0x040 | 6 | SM2 TX FIFO not full |
-| irqsTxFIFONotFull3 | 0x080 | 7 | SM3 TX FIFO not full |
+| IRQSTxFIFOHasSpace0 | 0x010 | 4 | SM0 TX FIFO not full |
+| IRQSTxFIFOHasSpace1 | 0x020 | 5 | SM1 TX FIFO not full |
+| IRQSTxFIFOHasSpace2 | 0x040 | 6 | SM2 TX FIFO not full |
+| IRQSTxFIFOHasSpace3 | 0x080 | 7 | SM3 TX FIFO not full |
 | IRQS0 | 0x100 | 8 | PIO IRQ flag 0 |
 | IRQS1 | 0x200 | 9 | PIO IRQ flag 1 |
 | IRQS2 | 0x400 | 10 | PIO IRQ flag 2 |
@@ -40,6 +40,7 @@ This document describes PIO interrupt handling on RP2040/RP2350.
 | IRQS5 | 0x2000 | 13 | PIO IRQ flag 5 (RP2350 only) |
 | IRQS6 | 0x4000 | 14 | PIO IRQ flag 6 (RP2350 only) |
 | IRQS7 | 0x8000 | 15 | PIO IRQ flag 7 (RP2350 only) |
+
 
 ### NVIC IRQ Numbers
 
@@ -81,14 +82,16 @@ PIO interrupts involve three levels:
 │         │         │                    │                    │          │   │
 │         │         ▼                    ▼                    ▼          │   │
 │         │  ┌────────────────────────────────────────────────────────┐  │   │
-│         │  │              IRQ_INT[0].E  (INTE)  0x12C               │  │   │
+│         │  │              IRQ_INT[0].E  (INTE)                      │  │   │
+│         │  │              RP2040: 0x12C | RP2350: 0x170             │  │   │
 │         │  │              Interrupt Enable Mask                     │  │   │
-│         │  │              (16 bits: FIFO[0-7] | IRQ[8-15])          │  │   │
+│         │  │              (RP2040: 12 bits | RP2350: 16 bits)       │  │   │
 │         │  └────────────────────────────┬───────────────────────────┘  │   │
 │         │                               │ AND                          │   │
 │         │                               ▼                              │   │
 │         │  ┌────────────────────────────────────────────────────────┐  │   │
-│         │  │              IRQ_INT[0].S  (INTS)  0x134               │  │   │
+│         │  │              IRQ_INT[0].S  (INTS)                      │  │   │
+│         │  │              RP2040: 0x134 | RP2350: 0x178             │  │   │
 │         │  │              Interrupt Status (masked)                 │  │   │
 │         │  └────────────────────────────┬───────────────────────────┘  │   │
 │         │                               │ any bit set?                 │   │

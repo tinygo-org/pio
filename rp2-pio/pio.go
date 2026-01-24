@@ -349,11 +349,12 @@ const (
 	IRQSRxFIFONotEmpty2                       // bit 2
 	IRQSRxFIFONotEmpty3                       // bit 3
 
-	// these are named oddly- is their name semantically correct? Not exporting for now...
-	irqsTxFIFONotFull0 // bit 4
-	irqsTxFIFONotFull1 // bit 5
-	irqsTxFIFONotFull2 // bit 6
-	irqsTxFIFONotFull3 // bit 7
+	// Activates when Tx FIFO has at least one empty slot, meaning
+	// there's space to push more data to state machine.
+	IRQSTxFIFOHasSpace0 // bit 4
+	IRQSTxFIFOHasSpace1 // bit 5
+	IRQSTxFIFOHasSpace2 // bit 6
+	IRQSTxFIFOHasSpace3 // bit 7
 
 	IRQS0 // bit 8 - PIO IRQ flag 0
 	IRQS1 // bit 9 - PIO IRQ flag 1
