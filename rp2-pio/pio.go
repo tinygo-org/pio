@@ -206,16 +206,20 @@ func (pio *PIO) PinMode() machine.PinMode {
 	return machine.PinPIO0 + machine.PinMode(pio.BlockIndex())
 }
 
-// GetIRQ gets lowest octet of PIO IRQ register.
-// State machine IRQ flags register. There are 8
-// state machine IRQ flags, which can be set, cleared, and waited on
-// by the state machines. There’s no fixed association between
-// flags and state machines — any state machine can use any flag.
-// Any of the 8 flags can be used for timing synchronisation
-// between state machines, using IRQ and WAIT instructions. The
-// lower four of these flags are also routed out to system-level
-// interrupt requests, alongside FIFO status interrupts — see e.g.
-// IRQ0_INTE.
+// GetIRQ returns the 8 PIO IRQ flags from the IRQ register.
+//
+// There are 8 state machine IRQ flags (0-7), which can be set, cleared, and
+// waited on by state machines. There's no fixed association between flags
+// and state machines — any state machine can use any flag.
+//
+// All 8 flags can be used for timing synchronisation between state machines
+// using IRQ and WAIT instructions.
+//
+// Platform differences for CPU interrupt routing:
+//   - RP2040: Only flags 0-3 can trigger CPU interrupts (via IRQ0_INTE/IRQ1_INTE)
+//   - RP2350: All 8 flags (0-7) can trigger CPU interrupts
+//
+// See SetInterrupt() for registering interrupt handlers.
 func (pio *PIO) GetIRQ() uint8 {
 	return uint8(pio.hw.GetIRQ())
 }
@@ -273,6 +277,19 @@ var (
 	setirq      [numPIO][2]bool
 )
 
+// SetInterrupt registers or deregisters an interrupt handler for PIO interrupts.
+//
+// Parameters:
+//   - irqnumZeroOrOne: Which interrupt line (0 or 1) to use
+//   - sourceMask: Bitmask of IRQSource values to enable/disable
+//   - callback: Handler function, or nil to deregister
+//
+// Thread Safety: This function is NOT thread-safe. It must only be called
+// during initialization or from a single goroutine. Do not call from
+// multiple goroutines or from within interrupt handlers.
+//
+// Returns machine.ErrNoPinChangeChannel if a handler is already registered
+// on the specified interrupt line.
 func (pio *PIO) SetInterrupt(irqnumZeroOrOne uint8, sourceMask IRQSource, callback irqhandler) error {
 	const a = rp.IRQ_PIO0_IRQ_0
 	nblock := pio.blockIndex()
@@ -295,12 +312,11 @@ func (pio *PIO) SetInterrupt(irqnumZeroOrOne uint8, sourceMask IRQSource, callba
 }
 
 func (pio *PIO) setIRQSourceMask(irqnumZeroOrOne uint8, sourcemask IRQSource, enabled bool) {
-	const intrbits = 0x0000_ffff
-	if sourcemask > intrbits || irqnumZeroOrOne > 1 {
+	if sourcemask > validINTEBits || irqnumZeroOrOne > 1 {
 		panic("invalid SetIRQ arg")
 	}
 	hw := pio.HW()
-	// pio.acknowledgeInterrupt()
+	// pio.clearIRQFlag()
 	inte := &hw.IRQ_INT[irqnumZeroOrOne].E
 	if enabled {
 		inte.SetBits(uint32(sourcemask))
@@ -309,9 +325,10 @@ func (pio *PIO) setIRQSourceMask(irqnumZeroOrOne uint8, sourcemask IRQSource, en
 	}
 }
 
-// acknowledgeInterrupt clears a particular PIO interrupt number between 0..7.
-func (pio *PIO) acknowledgeInterrupt(pioInterruptNumber uint8) {
-	pio.HW().IRQ.Set(1 << pioInterruptNumber)
+// clearIRQFlag clears a PIO IRQ flag (0-7) by writing 1 to the corresponding
+// bit in the IRQ register (write-1-to-clear semantics).
+func (pio *PIO) clearIRQFlag(irqFlagNumber uint8) {
+	pio.HW().IRQ.Set(1 << irqFlagNumber)
 }
 
 // this is the global interrupt handler for PIO interrupts.
