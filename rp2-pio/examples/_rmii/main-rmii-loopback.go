@@ -40,6 +40,12 @@ const (
 	pinTxBase = machine.GPIO7
 )
 
+// EthernetMAC implements an Ethernet MAC layer using PIO-based RMII drivers.
+// It combines PHY management (MDIO) with PIO-driven receive and transmit paths.
+//
+// The embedded phy.Device handles PHY configuration and link status via MDIO.
+// Data transfer uses the RMII interface at 100Mbps through the PIO state machines,
+// which offload the timing-critical RMII protocol from the CPU.
 type EthernetMAC struct {
 	phy.Device
 	rx piolib.RMIIRx
