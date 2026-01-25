@@ -12,6 +12,14 @@ import (
 	"github.com/tinygo-org/pio/rp2-pio/piolib"
 )
 
+// This example uses a ethernet PHY such as LAN8720 in loopback mode
+// to verify the send+receive data pipeline is valid.
+//
+// Besides hooking up your ethernet PHY with MDIO, Rx, Tx pins
+// you need to hook a loopback RJ45 cable to your PHY that joins:
+//  - RJ45 pin 1 with RJ45 pin 3
+//  - RJ45 pin 2 with RJ45 pin 6
+
 // Pin configuration matching reference implementation.
 // See makeEthernetMAC below to see how they are used.
 const (
@@ -115,7 +123,7 @@ func main() {
 	}
 	// Set up RX with callback.
 	var rxBuf [MFU]byte
-	var txbuf [MFU]byte
+	var txBuf [MFU]byte
 	var gotRx int
 	err = rmii.SetRxHandler(rxBuf[:], func(b []byte) {
 		gotRx = len(b)
@@ -135,8 +143,8 @@ func main() {
 			panic("startrx: " + err.Error())
 		}
 		seq++
-		n := putTestFrame(txbuf[:], seq)
-		err = rmii.SendFrame(txbuf[:n])
+		n := putTestFrame(txBuf[:], seq)
+		err = rmii.SendFrame(txBuf[:n])
 		if err != nil {
 			println("tx err:", err.Error())
 		}
@@ -151,12 +159,19 @@ func main() {
 		}
 		if rmii.ReceivedSinceStartRx() {
 			println("rx: got frame length ", gotRx)
-			if bytes.Equal(rxBuf[:n], txbuf[:n]) {
+			if bytes.Equal(rxBuf[:n], txBuf[:n]) {
 				println("  MATCH: all bytes sent also received identically! length match:", gotRx == n)
 			} else {
-				print("  mismatch, first 20 bytes: ")
-				for i := 0; i < 20; i++ {
+				plen := max(n, gotRx)
+				println("  mismatch, first", plen, "bytes")
+				print("rx: ")
+				for i := 0; i < plen; i++ {
 					print(rxBuf[i], " ")
+				}
+				println()
+				print("tx: ")
+				for i := 0; i < plen; i++ {
+					print(txBuf[i], " ")
 				}
 				println()
 			}
@@ -177,11 +192,11 @@ func putTestFrame(dst []byte, seq uint32) int {
 	binary.BigEndian.PutUint16(dst[12:14], etherTypeExp)
 	plen := copy(dst[14:], "s=")
 	binary.BigEndian.PutUint32(dst[14+plen:], seq)
-	return 14 + plen + 4
+	packetLen := 14 + plen + 4
+	crc := ethernetCRC32(dst[:packetLen])
+	binary.BigEndian.PutUint32(dst[packetLen:packetLen+4], crc)
+	return packetLen + 4
 }
-
-var zrx int
-var buf [64]byte
 
 // ethernetCRC32 calculates the IEEE 802.3 CRC-32 for Ethernet FCS.
 func ethernetCRC32(data []byte) uint32 {
@@ -198,34 +213,6 @@ func ethernetCRC32(data []byte) uint32 {
 		}
 	}
 	return ^crc
-}
-
-// ethernetFrameLength scans data calculating CRC until it finds valid FCS.
-// Returns frame length (excluding FCS) or 0 if no valid frame found.
-// Inspired by Sandeep Mistry's pico-rmii-ethernet ethernet_frame_length().
-func ethernetFrameLength(data []byte) int {
-	const poly = 0xedb88320 // IEEE 802.3 CRC-32 polynomial (reversed)
-	crc := uint32(0xffffffff)
-	for i := 0; i < len(data)-4; i++ {
-		b := data[i]
-		for bit := 0; bit < 8; bit++ {
-			if (crc^uint32(b))&1 != 0 {
-				crc = (crc >> 1) ^ poly
-			} else {
-				crc >>= 1
-			}
-			b >>= 1
-		}
-		// Check if next 4 bytes match inverted CRC (FCS)
-		invCRC := ^crc
-		if data[i+1] == byte(invCRC) &&
-			data[i+2] == byte(invCRC>>8) &&
-			data[i+3] == byte(invCRC>>16) &&
-			data[i+4] == byte(invCRC>>24) {
-			return i + 1 // Frame length excluding FCS
-		}
-	}
-	return 0
 }
 
 func makeEthernetMAC() (*EthernetMAC, error) {
@@ -252,10 +239,10 @@ func makeEthernetMAC() (*EthernetMAC, error) {
 		return nil, errors.New("unsupported link mode")
 	}
 	err = eth.rx.Configure(PIO, piolib.RMIIRxConfig{
-		Baud:      uint32(baud),
-		RxBase:    pinRxBase,
-		IRQ:       0,
-		IRQSource: pio.IRQS0,
+		Baud:           uint32(baud),
+		RxBase:         pinRxBase,
+		IRQ:            0,
+		IRQSourceIndex: 0,
 	})
 	if err != nil {
 		return nil, err
