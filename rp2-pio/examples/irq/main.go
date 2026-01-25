@@ -6,6 +6,7 @@
 package main
 
 import (
+	"math/bits"
 	"time"
 
 	pio "github.com/tinygo-org/pio/rp2-pio"
@@ -15,6 +16,9 @@ import (
 // Remember, we can't do anything that blocks from interrupt,
 // that includes printing- so we need an external variable.
 var irqTriggered bool = false
+var irqSource pio.IRQSource = 0xffffffff
+var irqLine uint8 = 0xff
+var pioBlock uint8 = 0xff
 
 func main() {
 	time.Sleep(2 * time.Second)
@@ -25,6 +29,9 @@ func main() {
 	// Register interrupt handler for IRQ flag 0 on PIO0's interrupt line 0.
 	err := Pio.SetInterrupt(0, pio.IRQS0, func(block, irqNum uint8, source pio.IRQSource) {
 		irqTriggered = true
+		pioBlock = block
+		irqLine = irqNum
+		irqSource = source
 	})
 	if err != nil {
 		panic("failed to set interrupt: " + err.Error())
@@ -61,6 +68,7 @@ func main() {
 	// Validate that the interrupt was triggered.
 	if irqTriggered {
 		println("SUCCESS: IRQ was triggered!")
+		println("pioBlock:", pioBlock, "irq:ine:", irqLine, "source:", irqSource, "sourceFirstBitIdx:", bits.TrailingZeros32(uint32(irqSource)))
 	} else {
 		println("FAILURE: IRQ was NOT triggered")
 	}

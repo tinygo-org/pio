@@ -269,7 +269,7 @@ func (pio *PIO) Version() uint8 {
 // HW returns a pointer to the PIO's hardware registers.
 func (pio *PIO) HW() *pioHW { return (*pioHW)(unsafe.Pointer(pio.hw)) }
 
-type irqhandler func(pioblock, irqZeroOrOne uint8, source IRQSource)
+type irqhandler = func(pioblock, irqZeroOrOne uint8, source IRQSource)
 
 // global interrupt handler variables.
 var (
