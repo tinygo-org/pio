@@ -6,6 +6,7 @@ import (
 	"device/rp"
 	"errors"
 	"machine"
+	"math/bits"
 	"runtime/interrupt"
 	"runtime/volatile"
 	"unsafe"
@@ -380,7 +381,7 @@ const (
 	IRQS3 // bit 11 - PIO IRQ flag 3
 )
 
-func (irqs IRQSource) FirstIndex() uint8 {
+func (irqs IRQSource) FirstSMIndex() uint8 {
 	return uint8(bits.TrailingZeros32(uint32(irqsSMmask & irqs)))
 }
 
