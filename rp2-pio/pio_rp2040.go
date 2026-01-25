@@ -16,6 +16,8 @@ const (
 	// RP2040 only supports 12 bits: FIFO status (bits 0-7) and IRQ flags 0-3 (bits 8-11).
 	// IRQ flags 4-7 exist in the IRQ register but cannot trigger CPU interrupts.
 	validINTEBits IRQSource = 0x0FFF
+
+	irqsSMmask = IRQS0 | IRQS1 | IRQS2 | IRQS3
 )
 
 func getPIO(block uint8) (pio *PIO) {

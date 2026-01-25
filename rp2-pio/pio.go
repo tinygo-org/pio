@@ -6,6 +6,7 @@ import (
 	"device/rp"
 	"errors"
 	"machine"
+	"math/bits"
 	"runtime/interrupt"
 	"runtime/volatile"
 	"unsafe"
@@ -377,11 +378,15 @@ const (
 	IRQS1 // bit 9 - PIO IRQ flag 1
 	IRQS2 // bit 10 - PIO IRQ flag 2
 	IRQS3 // bit 11 - PIO IRQ flag 3
-	IRQS4 // bit 12 - PIO IRQ flag 4
-	IRQS5 // bit 13 - PIO IRQ flag 5
-	IRQS6 // bit 14 - PIO IRQ flag 6
-	IRQS7 // bit 15 - PIO IRQ flag 7
 )
+
+func (irqs IRQSource) FirstIndex() uint8 {
+	return uint8(bits.TrailingZeros32(uint32(irqsSMmask & irqs)))
+}
+
+func IRQSFromSMIndex(idx uint8) IRQSource {
+	return 1 << (idx + 8)
+}
 
 // Programmable IO block
 type pioHW struct {

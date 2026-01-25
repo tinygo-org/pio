@@ -118,6 +118,7 @@ func (asm AssemblerV0) WaitPin(polarity bool, pin uint8) instructionV0 {
 //     added to the IRQ index, by way of modulo-4 addition on the two LSBs. For example, state machine 2 with a flag
 //     value of '0x11' will wait on flag 3, and a flag value of '0x13' will wait on flag 1. This allows multiple state machines
 //     running the same program to synchronise with each other.
+//   - If delay set, delay cycles do not begin until after the wait period elapses.
 func (asm AssemblerV0) WaitIRQ(polarity, relative bool, irqindex uint8) instructionV0 {
 	flag := boolAsU8(polarity) << 2
 	return asm.instrArgs(_INSTR_BITS_WAIT, 2|flag, asm.encodeIRQ(relative, irqindex))
@@ -352,6 +353,9 @@ func ClkDivFromPeriod(period, cpuFreq uint32) (whole uint16, frac uint8, err err
 //
 // Use powers of two for freq to avoid slow divisions and rounding errors.
 func ClkDivFromFrequency(freq, cpuFreq uint32) (whole uint16, frac uint8, err error) {
+	if freq == 0 {
+		return 1, 0, errors.New("ClkDiv: zero frequency")
+	}
 	//  freq = 256*clockfreq / (256*whole + frac)
 	//  256*whole + frac = 256*clockfreq / freq
 	return splitClkdiv(256 * uint64(cpuFreq) / uint64(freq))

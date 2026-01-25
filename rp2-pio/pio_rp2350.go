@@ -16,6 +16,13 @@ const (
 	// validINTEBits defines valid interrupt source bits for RP2350.
 	// RP2350 supports all 16 bits: FIFO status (bits 0-7) and all IRQ flags 0-7 (bits 8-15).
 	validINTEBits IRQSource = 0xFFFF
+
+	IRQS4 // bit 12 - PIO IRQ flag 4
+	IRQS5 // bit 13 - PIO IRQ flag 5
+	IRQS6 // bit 14 - PIO IRQ flag 6
+	IRQS7 // bit 15 - PIO IRQ flag 7
+
+	irqsSMmask = IRQS0 | IRQS1 | IRQS2 | IRQS3 | IRQS4 | IRQS5 | IRQS6 | IRQS7
 )
 
 // RP2350 PIO peripheral handles.
