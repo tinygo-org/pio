@@ -293,7 +293,15 @@ var (
 func (pio *PIO) SetInterrupt(irqnumZeroOrOne uint8, sourceMask IRQSource, callback irqhandler) error {
 	const a = rp.IRQ_PIO0_IRQ_0
 	nblock := pio.blockIndex()
-	if callback == nil {
+    switch {
+	case callback == nil:
+		// Delete callback.
+		pio.setIRQSourceMask(irqnumZeroOrOne, sourceMask, false)
+		irqhandlers[nblock][irqnumZeroOrOne] = nil
+		return nil
+	case irqhandlers[nblock][irqnumZeroOrOne] != nil:
+		return machine.ErrNoPinChangeChannel
+	}
 		// Delete callback.
 		pio.setIRQSourceMask(irqnumZeroOrOne, sourceMask, false)
 		irqhandlers[nblock][irqnumZeroOrOne] = nil
