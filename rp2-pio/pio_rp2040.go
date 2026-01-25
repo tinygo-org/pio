@@ -75,25 +75,8 @@ func interruptSet(nblock, irq uint8) {
 	case nblock == 1 && irq == 0:
 		interrupt.New(rp.IRQ_PIO1_IRQ_0, handleInterrupt).Enable()
 		irqSet(rp.IRQ_PIO1_IRQ_0, true)
-    case nblock == 1 && irq == 1:
+	case nblock == 1 && irq == 1:
 		interrupt.New(rp.IRQ_PIO1_IRQ_1, handleInterrupt).Enable()
 		irqSet(rp.IRQ_PIO1_IRQ_1, true)
-	}
-	case 0:
-		if irq == 0 {
-			interrupt.New(rp.IRQ_PIO0_IRQ_0, handleInterrupt).Enable()
-			irqSet(rp.IRQ_PIO0_IRQ_0, true)
-		} else {
-			interrupt.New(rp.IRQ_PIO0_IRQ_1, handleInterrupt).Enable()
-			irqSet(rp.IRQ_PIO0_IRQ_1, true)
-		}
-	case 1:
-		if irq == 0 {
-			interrupt.New(rp.IRQ_PIO1_IRQ_0, handleInterrupt).Enable()
-			irqSet(rp.IRQ_PIO1_IRQ_0, true)
-		} else {
-			interrupt.New(rp.IRQ_PIO1_IRQ_1, handleInterrupt).Enable()
-			irqSet(rp.IRQ_PIO1_IRQ_1, true)
-		}
 	}
 }
