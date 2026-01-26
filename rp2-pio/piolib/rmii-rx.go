@@ -51,14 +51,21 @@ func (r *RMIIRx) Configure(PIO *pio.PIO, cfg RMIIRxConfig) error {
 		polRising = true
 		labelLoop = 2
 	)
+
 	asm := pio.AssemblerV0{SidesetBits: 0}
 	var rxprog = [...]uint16{
+		/*
+			Copyright (c) 2026 Patricio Whittingslow, with portions copyrighted as below
+			Copyright (c) 2025 Rob Scott
+			Copyright (c) 2021 Sandeep Mistry
+		*/
 		asm.WaitPin(polRising, idxCRSDV).Encode(),
-		asm.WaitPin(polRising, idxRX1).Delay(1).Encode(),
+		asm.WaitPin(polRising, idxRX1).Delay(1).Encode(), // Delay modified from rscott version, yields better results.
 		labelLoop:// main read loop while CRSDV is high at byte boundary.
 		asm.In(pio.InSrcPins, 2).Encode(),
 		asm.Jmp(pio.JmpPinInput, labelLoop).Encode(),
 		// Pull in another dibit just in case we desynced by a tidbit. If no desync happened is itty bitty harmless.
+		// CRSDV Toggling in 10M mode may require more logic here to check DV status. See https://github.com/soypat/lneto/blob/main/phy/rmii.md
 		asm.In(pio.InSrcPins, 2).Encode(),
 		asm.IRQSet(false, cfg.IRQSourceIndex).Encode(),
 	}

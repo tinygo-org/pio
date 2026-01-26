@@ -58,6 +58,7 @@ func (r *RMIITx) Configure(PIO *pio.PIO, cfg RMIITxConfig) error {
 	// First 8 bytes are Preamble+SFD dibits.
 	asm := pio.AssemblerV0{SidesetBits: 0}
 	var txprog = [...]uint16{
+		// Copyright (c) 2026 Patricio Whittingslow
 		asm.Pull(false, true).Encode(),
 		asm.Set(pio.SetDestPins, mskTXEN).Encode(),
 		labelPreambleData:// Preamble+SFD+Data. TXEN asserted synchronous to first dibit.
