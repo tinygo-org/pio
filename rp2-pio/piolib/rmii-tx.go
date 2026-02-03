@@ -16,12 +16,14 @@ type RMIITxConfig struct {
 	TxBuffer []byte
 	// TxBase is the first pin of the consecutive, ordered set [TX0,TX1,TXEN]
 	TxBase machine.Pin
+	RefClk machine.Pin
 }
 
 type RMIITx struct {
-	tx    pio.StateMachine
-	txOff uint8
-	dma   dmaChannel
+	tx     pio.StateMachine
+	txOff  uint8
+	refclk machine.Pin
+	dma    dmaChannel
 	// Buf must contain preamble+SFD+CRC+actual frame content.
 	buf []byte
 }
@@ -34,45 +36,53 @@ func (r *RMIITx) Configure(PIO *pio.PIO, cfg RMIITxConfig) error {
 		return errors.New("RMIITx buffer too short")
 	} else if len(cfg.TxBuffer) > math.MaxUint16 {
 		return errors.New("buffer too long")
+	} else if cfg.RefClk == 0 {
+		return errors.New("refclk cannot be GP0")
 	}
 	whole, frac, err := pio.ClkDivFromFrequency(cfg.Baud, machine.CPUFrequency())
 	if err != nil {
 		return err
 	}
+	// set to 1 to enable txen on SIDESET instead of SET.
+	// set to 0 uses TXEN as SET pin.
+	const sideTXEN = 1
 
 	const (
 		idxTx0 = iota
 		idxTx1
 		idxTxEN
 
-		mskTx0            = 1 << idxTx0
-		mskTx1            = 1 << idxTx1
-		mskTXEN           = 1 << idxTxEN
+		mskTx0  = 1 << idxTx0
+		mskTx1  = 1 << idxTx1
+		mskTXEN = (1 << idxTxEN) * (1 - sideTXEN)
+
 		labelPreambleData = 2
-		labelTxDeassert   = 5
-		labelTxIdle       = 7
+		labelTxDeassert   = labelPreambleData + 3
+		labelTxIdle       = labelTxDeassert + 2
+		polRising         = true
 	)
 
 	// Program requires X set to amount of dibits to transmit during TXEN section.
 	// X and Y will be zero on frame transmit success.
 	// First 8 bytes are Preamble+SFD dibits.
-	asm := pio.AssemblerV0{SidesetBits: 0}
+	asm := pio.AssemblerV0{SidesetBits: sideTXEN}
 	var txprog = [...]uint16{
 		// Copyright (c) 2026 Patricio Whittingslow
-		asm.Pull(false, true).Encode(),
-		asm.Set(pio.SetDestPins, mskTXEN).Encode(),
+		asm.Pull(false, true).Side(0).Encode(),
+		asm.Set(pio.SetDestPins, mskTXEN).Side(0).Encode(),
+		// asm.WaitPin(polRising, 0).Encode(),
 		labelPreambleData:// Preamble+SFD+Data. TXEN asserted synchronous to first dibit.
-		asm.Out(pio.OutDestPins, 2).Encode(),
-		asm.Jmp(pio.JmpXNZeroDec, labelPreambleData).Encode(),
+		asm.Out(pio.OutDestPins, 2).Side(sideTXEN).Encode(),
+		asm.Jmp(pio.JmpXNZeroDec, labelPreambleData).Side(sideTXEN).Encode(),
 
 		// Send inter-packet-gap(IPG) with TXEN deasserted.
-		asm.Set(pio.SetDestPins, 0).Encode(),
+		asm.Set(pio.SetDestPins, 0).Side(0).Encode(),
 		labelTxDeassert:// Deassertion of first 32 dibits=4 bytes.
-		asm.Nop().Encode(),
-		asm.Jmp(pio.JmpYNZeroDec, labelTxDeassert).Encode(),
+		asm.Nop().Side(0).Encode(),
+		asm.Jmp(pio.JmpYNZeroDec, labelTxDeassert).Side(0).Encode(),
 		// .wrap_target
 		labelTxIdle:// No data to send loop.
-		asm.Nop().Encode(),
+		asm.Nop().Side(0).Encode(),
 		// .wrap
 	}
 	txoff, err := PIO.AddProgram(txprog[:], -1)
@@ -90,12 +100,16 @@ func (r *RMIITx) Configure(PIO *pio.PIO, cfg RMIITxConfig) error {
 		pin := (cfg.TxBase + i)
 		pin.Configure(pinCfg)
 	}
-
+	// cfg.RefClk.Configure(pinCfg)
 	// Create state machine configuration.
 	txcfg := asm.DefaultStateMachineConfig(txoff, txprog[:])
+	// txcfg.SetInPins(cfg.RefClk, 1)
 	txcfg.SetWrap(txoff+labelTxIdle, txoff+uint8(len(txprog))-1)
-	txcfg.SetOutPins(cfg.TxBase, 2)  // OUT pins: TX0,TX1
-	txcfg.SetSetPins(cfg.TxBase, 3)  // SET pins: TX0,TX1,TXEN
+	txcfg.SetOutPins(cfg.TxBase, 2)          // OUT pins: TX0,TX1
+	txcfg.SetSetPins(cfg.TxBase, 3-sideTXEN) // SET pins: TX0,TX1,TXEN
+	if sideTXEN == 1 {
+		txcfg.SetSidesetPins(cfg.TxBase + idxTxEN)
+	}
 	txcfg.SetOutShift(true, true, 8) // LSB sent out first, must shift right.
 	txcfg.SetClkDivIntFrac(whole, frac)
 	txcfg.SetFIFOJoin(pio.FifoJoinTx)
@@ -108,6 +122,7 @@ func (r *RMIITx) Configure(PIO *pio.PIO, cfg RMIITxConfig) error {
 
 	r.tx = txSM
 	r.buf = cfg.TxBuffer
+	r.refclk = cfg.RefClk
 	r.enableDMA(true)
 	return nil
 }
