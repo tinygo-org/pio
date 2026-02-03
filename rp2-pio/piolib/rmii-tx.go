@@ -57,7 +57,7 @@ func (r *RMIITx) Configure(PIO *pio.PIO, cfg RMIITxConfig) error {
 		mskTXEN = (1 << idxTxEN) * (1 - sideTXEN)
 
 		labelPreambleData = 2
-		labelTxDeassert   = labelPreambleData + 3
+		labelTxDeassert   = labelPreambleData + 4
 		labelTxIdle       = labelTxDeassert + 2
 		polRising         = true
 	)
@@ -75,8 +75,9 @@ func (r *RMIITx) Configure(PIO *pio.PIO, cfg RMIITxConfig) error {
 		asm.Out(pio.OutDestPins, 2).Side(sideTXEN).Encode(),
 		asm.Jmp(pio.JmpXNZeroDec, labelPreambleData).Side(sideTXEN).Encode(),
 
+		// Why does a little more TXEN time yield better results?
+		asm.Set(pio.SetDestPins, 0).Side(sideTXEN).Encode(),
 		// Send inter-packet-gap(IPG) with TXEN deasserted.
-		asm.Set(pio.SetDestPins, 0).Side(0).Encode(),
 		labelTxDeassert:// Deassertion of first 32 dibits=4 bytes.
 		asm.Nop().Side(0).Encode(),
 		asm.Jmp(pio.JmpYNZeroDec, labelTxDeassert).Side(0).Encode(),
