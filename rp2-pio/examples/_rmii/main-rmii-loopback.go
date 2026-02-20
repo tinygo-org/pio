@@ -49,7 +49,7 @@ const (
 type EthernetMAC struct {
 	phy.Device
 	rx piolib.RMIIRx
-	tx piolib.RMIITx
+	tx piolib.RMIITxExtClk
 }
 
 // RMIIRx wrappers.
@@ -254,9 +254,9 @@ func makeEthernetMAC() (*EthernetMAC, error) {
 		return nil, err
 	}
 	err = eth.tx.Configure(PIO, piolib.RMIITxConfig{
-		Baud:     uint32(baud),
-		TxBuffer: make([]byte, MFU),
+		TxBuffer: make([]byte, MFU+2),
 		TxBase:   pinTxBase,
+		RefClk:   pinRefClk,
 	})
 	if err != nil {
 		return nil, err
