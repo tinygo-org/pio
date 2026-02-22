@@ -348,13 +348,19 @@ func ClkDivFromPeriod(period, cpuFreq uint32) (whole uint16, frac uint8, err err
 	return splitClkdiv(256 * uint64(period) * uint64(cpuFreq) / uint64(1e9))
 }
 
+var (
+	errBadFreq     = errors.New("ClkDiv: zero frequency")
+	errLargePeriod = errors.New("ClkDiv: too large period or CPU frequency")
+	errSmallPeriod = errors.New("ClkDiv: too small period or CPU frequency")
+)
+
 // ClkDivFromFrequency calculates the CLKDIV register values
 // to reach a given StateMachine cycle frequency. freq and cpuFreq are expected to be in Hz.
 //
 // Use powers of two for freq to avoid slow divisions and rounding errors.
 func ClkDivFromFrequency(freq, cpuFreq uint32) (whole uint16, frac uint8, err error) {
 	if freq == 0 {
-		return 1, 0, errors.New("ClkDiv: zero frequency")
+		return 1, 0, errBadFreq
 	}
 	//  freq = 256*clockfreq / (256*whole + frac)
 	//  256*whole + frac = 256*clockfreq / freq
@@ -364,9 +370,9 @@ func ClkDivFromFrequency(freq, cpuFreq uint32) (whole uint16, frac uint8, err er
 
 func splitClkdiv(clkdiv uint64) (whole uint16, frac uint8, err error) {
 	if clkdiv > 256*math.MaxUint16 {
-		return 0, 0, errors.New("ClkDiv: too large period or CPU frequency")
+		return 0, 0, errLargePeriod
 	} else if clkdiv < 256 {
-		return 0, 0, errors.New("ClkDiv: too small period or CPU frequency")
+		return 0, 0, errSmallPeriod
 	}
 	whole = uint16(clkdiv / 256)
 	frac = uint8(clkdiv % 256)
