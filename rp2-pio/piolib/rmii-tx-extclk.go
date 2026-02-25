@@ -33,6 +33,7 @@ jmp x--, ipg [TX_BYTE]
 .wrap
 */
 
+// RMIITxConfig configures a PIO-based RMII transmitter.
 type RMIITxConfig struct {
 	// Baud is the transmit frequency. Set to 100_000_000 for 100M operation.
 	Baud uint32

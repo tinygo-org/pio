@@ -22,6 +22,8 @@ type RMIIRxConfig struct {
 	IRQSourceIndex uint8
 }
 
+// RMIIRx is a PIO-based RMII receiver. It samples RX0, RX1 and CRS_DV at
+// the RMII clock rate and delivers complete frames via an IRQ-driven callback.
 type RMIIRx struct {
 	sm       pio.StateMachine
 	rxOff    uint8
@@ -34,6 +36,7 @@ type RMIIRx struct {
 	block     uint8
 }
 
+// Configure sets up the PIO state machine and DMA for RMII reception.
 func (r *RMIIRx) Configure(PIO *pio.PIO, cfg RMIIRxConfig) error {
 	if cfg.IRQSourceIndex > 3 {
 		return errors.New("IRQSource index out of range (0-7)")
@@ -130,6 +133,7 @@ func (r *RMIIRx) irqhandler(pioblock, irqLine uint8, source pio.IRQSource) {
 	r.dma.abort()
 }
 
+// StopRx halts reception, aborts any in-flight DMA, and resets the state machine.
 func (r *RMIIRx) StopRx() error {
 	if !r.sm.IsEnabled() {
 		return errors.New("already stopped")
@@ -144,6 +148,7 @@ func (r *RMIIRx) StopRx() error {
 	return nil
 }
 
+// StartRx begins frame reception. SetRxIRQHandler must be called first.
 func (r *RMIIRx) StartRx() error {
 	if len(r.rxbuf) == 0 {
 		return errors.New("no rxbuf configured")
@@ -179,6 +184,8 @@ func (r *RMIIRx) StartRx() error {
 	return nil
 }
 
+// SetRxIRQHandler sets the receive buffer and callback invoked from the IRQ
+// handler when a frame ends (CRS_DV deasserts). Stops any ongoing reception.
 func (r *RMIIRx) SetRxIRQHandler(rxbuf []byte, callback func(buf []byte)) error {
 	// Terminate ongoing transaction since we are tinkering with DMA target.
 	r.StopRx()
@@ -187,10 +194,12 @@ func (r *RMIIRx) SetRxIRQHandler(rxbuf []byte, callback func(buf []byte)) error 
 	return nil
 }
 
+// ReceivedSinceStartRx returns true if a frame has been received since the last StartRx call.
 func (r *RMIIRx) ReceivedSinceStartRx() bool {
 	return r.block != 0xff || r.irq != 0xff || r.irqsource != 0xffff_ffff
 }
 
+// InRx returns true if the receiver state machine is currently enabled.
 func (r *RMIIRx) InRx() bool {
 	return r.sm.IsEnabled()
 }
