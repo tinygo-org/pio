@@ -20,11 +20,13 @@ type RMIIRxConfig struct {
 	IRQ uint8
 	// IRQSource is the triggering source for state machine. Varies between 0..3 on RP2040 and extends to 0..7 on RP2350.
 	IRQSourceIndex uint8
+	// RefClk is the pin to REFCLK a.k.a RETCLK or EXTCLK. This is the external clock we synchronize with.
+	RefClk machine.Pin
 }
 
-// RMIIRx is a PIO-based RMII receiver. It samples RX0, RX1 and CRS_DV at
+// RMIIRxExtClk is a PIO-based RMII receiver. It samples RX0, RX1 and CRS_DV at
 // the RMII clock rate and delivers complete frames via an IRQ-driven callback.
-type RMIIRx struct {
+type RMIIRxExtClk struct {
 	sm       pio.StateMachine
 	rxOff    uint8
 	dma      dmaChannel
@@ -37,7 +39,7 @@ type RMIIRx struct {
 }
 
 // Configure sets up the PIO state machine and DMA for RMII reception.
-func (r *RMIIRx) Configure(PIO *pio.PIO, cfg RMIIRxConfig) error {
+func (r *RMIIRxExtClk) Configure(PIO *pio.PIO, cfg RMIIRxConfig) error {
 	if cfg.IRQSourceIndex > 3 {
 		return errors.New("IRQSource index out of range (0-7)")
 	}
@@ -120,7 +122,7 @@ func (r *RMIIRx) Configure(PIO *pio.PIO, cfg RMIIRxConfig) error {
 	return nil
 }
 
-func (r *RMIIRx) irqhandler(pioblock, irqLine uint8, source pio.IRQSource) {
+func (r *RMIIRxExtClk) irqhandler(pioblock, irqLine uint8, source pio.IRQSource) {
 	// Halt ongoing rx async logic to wait for a future StartRx call.
 	r.sm.SetEnabled(false)
 	r.block = pioblock
@@ -134,7 +136,7 @@ func (r *RMIIRx) irqhandler(pioblock, irqLine uint8, source pio.IRQSource) {
 }
 
 // StopRx halts reception, aborts any in-flight DMA, and resets the state machine.
-func (r *RMIIRx) StopRx() error {
+func (r *RMIIRxExtClk) StopRx() error {
 	if !r.sm.IsEnabled() {
 		return errors.New("already stopped")
 	}
@@ -149,7 +151,7 @@ func (r *RMIIRx) StopRx() error {
 }
 
 // StartRx begins frame reception. SetRxIRQHandler must be called first.
-func (r *RMIIRx) StartRx() error {
+func (r *RMIIRxExtClk) StartRx() error {
 	if len(r.rxbuf) == 0 {
 		return errors.New("no rxbuf configured")
 	} else if r.sm.IsEnabled() {
@@ -186,7 +188,7 @@ func (r *RMIIRx) StartRx() error {
 
 // SetRxIRQHandler sets the receive buffer and callback invoked from the IRQ
 // handler when a frame ends (CRS_DV deasserts). Stops any ongoing reception.
-func (r *RMIIRx) SetRxIRQHandler(rxbuf []byte, callback func(buf []byte)) error {
+func (r *RMIIRxExtClk) SetRxIRQHandler(rxbuf []byte, callback func(buf []byte)) error {
 	// Terminate ongoing transaction since we are tinkering with DMA target.
 	r.StopRx()
 	r.rxbuf = rxbuf
@@ -195,11 +197,11 @@ func (r *RMIIRx) SetRxIRQHandler(rxbuf []byte, callback func(buf []byte)) error 
 }
 
 // ReceivedSinceStartRx returns true if a frame has been received since the last StartRx call.
-func (r *RMIIRx) ReceivedSinceStartRx() bool {
+func (r *RMIIRxExtClk) ReceivedSinceStartRx() bool {
 	return r.block != 0xff || r.irq != 0xff || r.irqsource != 0xffff_ffff
 }
 
 // InRx returns true if the receiver state machine is currently enabled.
-func (r *RMIIRx) InRx() bool {
+func (r *RMIIRxExtClk) InRx() bool {
 	return r.sm.IsEnabled()
 }
