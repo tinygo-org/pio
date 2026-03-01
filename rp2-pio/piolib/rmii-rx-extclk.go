@@ -39,40 +39,55 @@ type RMIIRxExtClk struct {
 }
 
 // Configure sets up the PIO state machine and DMA for RMII reception.
+// The Baud field in cfg is ignored; PIO runs at the CPU clock frequency.
 func (r *RMIIRxExtClk) Configure(PIO *pio.PIO, cfg RMIIRxConfig) error {
 	if cfg.IRQSourceIndex > 3 {
 		return errors.New("IRQSource index out of range (0-7)")
+	} else if cfg.RefClk == 0 || cfg.RefClk == machine.NoPin {
+		return errors.New("need a clock that is not GP0")
 	}
 
-	whole, frac, err := pio.ClkDivFromFrequency(cfg.Baud, machine.CPUFrequency())
-	if err != nil {
-		return err
+	// PIO runs at full CPU clock. Compute timing from CPU frequency and 50 MHz RMII clock.
+	const rmiiClk = 50_000_000 // 50 MHz RMII dibit clock.
+	cpuFreq := machine.CPUFrequency()
+	if cpuFreq%rmiiClk != 0 {
+		return errors.New("CPU frequency must be a multiple of 50 MHz")
 	}
+	txPhase := cpuFreq / rmiiClk // PIO cycles per RMII dibit period.
+	if txPhase < 2 || txPhase > 6 {
+		return errors.New("CPU frequency out of range (need 100-300 MHz)")
+	}
+
+	rxBit := txPhase - 2 // Inter-sample delay.
+	rxD0 := txPhase - 1  // SOF alignment delay.
+
 	const (
 		idxRX0 = iota
 		idxRX1
 		idxCRSDV
 
-		polRising = true
-		labelLoop = 2
+		polRising   = true
+		labelSample = 4
+		labelS2     = 6
 	)
 
+	/*
+		Copyright (c) 2026 Patricio Whittingslow, with portions copyrighted as below
+		Copyright (c) 2025 Rob Scott
+		Copyright (c) 2021 Sandeep Mistry
+	*/
 	asm := pio.AssemblerV0{SidesetBits: 0}
 	var rxprog = [...]uint16{
-		/*
-			Copyright (c) 2026 Patricio Whittingslow, with portions copyrighted as below
-			Copyright (c) 2025 Rob Scott
-			Copyright (c) 2021 Sandeep Mistry
-		*/
-		asm.WaitPin(polRising, idxCRSDV).Encode(),
-		asm.WaitPin(polRising, idxRX1).Delay(1).Encode(), // Delay modified from rscott version, yields better results.
-		labelLoop:// main read loop while CRSDV is high at byte boundary.
-		asm.In(pio.InSrcPins, 2).Encode(),
-		asm.Jmp(pio.JmpPinInput, labelLoop).Encode(),
-		// Pull in another dibit just in case we desynced by a tidbit. If no desync happened is itty bitty harmless.
-		// CRSDV Toggling in 10M mode may require more logic here to check DV status. See https://github.com/soypat/lneto/blob/main/phy/rmii.md
-		asm.In(pio.InSrcPins, 2).Encode(),
-		asm.IRQSet(false, cfg.IRQSourceIndex).Encode(),
+		asm.WaitPin(polRising, idxCRSDV).Encode(),                        // Wait for CRS_DV assertion.
+		asm.Set(pio.SetDestX, 0).Encode(),                                // Init dibit counter.
+		asm.WaitPin(polRising, idxRX1).Delay(uint8(rxD0)).Encode(),       // Wait for SOF + alignment delay.
+		asm.WaitGPIO(false, uint8(cfg.RefClk)).Encode(),                  // Sync to RMII clock falling edge.
+		labelSample:                                                      // Sample loop (2 dibits per iteration).
+		asm.In(pio.InSrcPins, 2).Delay(uint8(rxBit)).Encode(),            // Sample dibit.
+		asm.Jmp(pio.JmpXNZeroDec, labelS2).Encode(),                      // Timing spacer + counter decrement.
+		labelS2:                                                          asm.In(pio.InSrcPins, 2).Delay(uint8(rxBit)).Encode(), // Sample dibit.
+		asm.Jmp(pio.JmpPinInput, labelSample).Encode(),                   // Loop while CRS_DV high.
+		asm.IRQSet(false, cfg.IRQSourceIndex).Encode(),                   // Signal end of frame.
 	}
 	rxSM, err := PIO.ClaimStateMachine()
 	if err != nil {
@@ -84,28 +99,29 @@ func (r *RMIIRxExtClk) Configure(PIO *pio.PIO, cfg RMIIRxConfig) error {
 		return err
 	}
 
-	// Configure RX pins as inputs
+	// Configure RX pins as inputs.
 	rxPin := cfg.RxBase
 	pinCfg := machine.PinConfig{Mode: PIO.PinMode()}
 	for i := machine.Pin(0); i < 3; i++ {
 		pin := rxPin + i
 		pin.Configure(pinCfg)
 	}
-	// Create state machine configuration
+	// Create state machine configuration.
 	rxcfg := asm.DefaultStateMachineConfig(rxoff, rxprog[:])
-	rxcfg.SetInPins(rxPin, 2)         // IN pins: RX0, RX1 at rxPin
-	rxcfg.SetJmpPin(rxPin + idxCRSDV) // JMP pin: CRS_DV at rxPin+2
-	rxcfg.SetInShift(true, true, 8)   // In shift: right shift, autopush enabled, threshold 8 bits (1 byte)
+	rxcfg.SetInPins(rxPin, 2)         // IN pins: RX0, RX1 at rxPin.
+	rxcfg.SetJmpPin(rxPin + idxCRSDV) // JMP pin: CRS_DV at rxPin+2.
+	rxcfg.SetInShift(true, true, 8)   // Right shift, autopush at 8 bits (1 byte).
 	rxcfg.SetFIFOJoin(pio.FifoJoinRx)
-	rxcfg.SetClkDivIntFrac(whole, frac)
-	// Initialize SM at start of program
+	rxcfg.SetClkDivIntFrac(1, 0) // Run at CPU clock.
+	// Initialize SM at start of program.
 	rxSM.Init(rxoff, rxcfg)
-	// Set RX pins as inputs (pindirs = 0 for input)
+	// Set RX pins as inputs (pindirs = 0 for input).
 	var rxPinMsk uint32 = 0b111 << rxPin
 	rxSM.SetPindirsMasked(0, rxPinMsk)
 
-	// Optional: bypass input synchronizers for lower latency
-	PIO.SetInputSyncBypassMasked(rxPinMsk, rxPinMsk)
+	// Bypass input synchronizers for lower latency on RX pins and RefClk.
+	syncBypassMsk := rxPinMsk | (1 << cfg.RefClk)
+	PIO.SetInputSyncBypassMasked(syncBypassMsk, syncBypassMsk)
 	r.dma.helperEnableDMA(true)
 	r.sm = rxSM
 	r.rxOff = rxoff
