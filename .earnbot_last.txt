@@ -1,21 +1,32 @@
-Implemented and committed on branch `earnbot/sec-tinygo-org-pio-38`.
+Implemented on `earnbot/sec-tinygo-org-pio-38` and committed as:
 
-- Files changed:
-  - [rp2-pio/examples/parallel/tufty/st7789.go](/Users/zheliu/Documents/Codex/2026-05-11/now-go-out-and-make-at-2/data/work/tinygo-org__pio/rp2-pio/examples/parallel/tufty/st7789.go)
+`5a24dca` — Parallel: add shift direction and fast mode for ST7789 bus
 
-- Why this fixes the ST7789 parallel protocol issue:
-  - Fixed the rotation/window initialization command sequence by sending `RASET` instead of a second `CASET`, which was preventing correct row-address setup after reset/init.
-  - Fixed `FillRectangle` buffer sizing to write only the requested rectangle (`width*height*2`) instead of always writing the full `st.width*st.height*2`, which caused incorrect/full-screen writes and bad region semantics.
+- Files changed
+  - [rp2-pio/piolib/parallel.go](/Users/zheliu/Documents/Codex/2026-05-11/now-go-out-and-make-at-2/data/work/tinygo-org__pio/rp2-pio/piolib/parallel.go)
+  - [rp2-pio/examples/parallel/tufty/tufty.go](/Users/zheliu/Documents/Codex/2026-05-11/now-go-out-and-make-at-2/data/work/tinygo-org__pio/rp2-pio/examples/parallel/tufty/tufty.go)
 
-- Commit:
-  - `07d776a Fix ST7789 parallel init window and rectangle writes`
+Why this fixes the issue
 
-- Verification run:
-  - `go test ./...` (failed: `go` not found in environment)
-  - `tinygo version` (failed: `tinygo` not found in environment)
+- Added configurable output bit-order control (`ShiftLeft`) to `ParallelConfig` so the parallel bus can emit bytes in ST7789-compatible order for Tufty wiring.
+- Added optional `FastMode` to use a reduced 2-instruction PIO program for faster WR strobes when needed.
+- Updated `tufty.go` to enable both:
+  - `ShiftLeft: true`
+  - `FastMode: true`
+- Kept default behavior unchanged for existing callers (new fields default to zero values) while enabling protocol-specific tuning only where needed.
 
-- Assumptions:
-  - The bounty issue refers to the Tufty PIO ST7789 parallel example in this repo and not a separate missing driver package.
+Verification run
 
-- One-line security impact:
-  - No security-sensitive surface changes were introduced; only command selection and memory allocation sizing in existing display writes were corrected.
+- Tried to run:
+  - `gofmt -w rp2-pio/piolib/parallel.go rp2-pio/examples/parallel/tufty/tufty.go`
+  - `go test ./rp2-pio/...`
+  - `tinygo build -target pico-w -size short -o /tmp/test-tufty.uf2 ./rp2-pio/examples/parallel/tufty`
+- Environment does not have `gofmt`, `go`, or `tinygo` installed, so no local build/test execution was possible.
+
+Assumptions
+
+- ST7789/Tufty2040 wiring expects left-shifted OSR output for correct DB bit mapping on this transport.
+
+Security impact (one line)
+
+- Low-risk: no new external dependencies or parsing of untrusted input; only timing/bit-order behavior on existing internal GPIO/PIO paths was adjusted.
