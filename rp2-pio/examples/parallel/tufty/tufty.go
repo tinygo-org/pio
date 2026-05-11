@@ -32,6 +32,8 @@ func main() {
 		DataBase:    db0Pin,
 		BusWidth:    8,
 		BitsPerPull: 8,
+		ShiftLeft:   true,
+		FastMode:    true,
 	})
 	if err != nil {
 		panic(err.Error())

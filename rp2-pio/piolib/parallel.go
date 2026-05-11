@@ -29,6 +29,13 @@ type ParallelConfig struct {
 	// and pulling a new value from TxFIFO.
 	// Must be a multiple of BusWidth.
 	BitsPerPull uint8
+	// ShiftLeft sets the OSR output shift direction. True shifts bits out from the most
+	// significant bit first for each output operation.
+	ShiftLeft bool
+
+	// FastMode uses a reduced 2-instruction program that omits the final clock-low
+	// cycle. This can increase throughput but may be less stable on some boards.
+	FastMode bool
 }
 
 func NewParallel(sm pio.StateMachine, cfg ParallelConfig) (*Parallel, error) {
@@ -37,10 +44,14 @@ func NewParallel(sm pio.StateMachine, cfg ParallelConfig) (*Parallel, error) {
 	asm := pio.AssemblerV0{
 		SidesetBits: sideSetBitCount,
 	}
-	var program = [3]uint16{
+	var rawProgram = [3]uint16{
 		asm.Out(pio.OutDestPins, cfg.BusWidth).Side(0).Encode(), //  0: out    pins, <npins>   side 0
 		asm.Nop().Side(1).Encode(),                              //  1: nop                    side 1
 		asm.Nop().Side(0).Encode(),                              //  2: nop                    side 0
+	}
+	program := rawProgram[:]
+	if cfg.FastMode {
+		program = rawProgram[:2]
 	}
 	maxBaud := math.MaxUint32 / uint32(len(program))
 	if cfg.Baud > maxBaud {
@@ -78,7 +89,8 @@ func NewParallel(sm pio.StateMachine, cfg ParallelConfig) (*Parallel, error) {
 	scfg := asm.DefaultStateMachineConfig(progOffset, program[:])
 
 	scfg.SetOutPins(cfg.DataBase, cfg.BusWidth)
-	scfg.SetOutShift(true, true, uint16(cfg.BitsPerPull))
+	// SetOutShift takes a right-shift flag; keep default behavior unless ShiftLeft is set.
+	scfg.SetOutShift(!cfg.ShiftLeft, true, uint16(cfg.BitsPerPull))
 	scfg.SetSidesetPins(cfg.Clock)
 
 	scfg.SetClkDivIntFrac(whole, frac)
