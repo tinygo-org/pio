@@ -141,7 +141,7 @@ func (st *ST7789) configureDisplayRotation(rotation Rotation) {
 	raset[1] = (raset[1] << 8) | ((raset[1] >> 8) & 0xFF)
 
 	st.command(CASET, []byte{byte(caset[0] >> 8), byte(caset[0] & 0xff), byte(caset[1] >> 8), byte(caset[1] & 0xff)})
-	st.command(CASET, []byte{byte(raset[0] >> 8), byte(raset[0] & 0xff), byte(raset[1] >> 8), byte(raset[1] & 0xff)})
+	st.command(RASET, []byte{byte(raset[0] >> 8), byte(raset[0] & 0xff), byte(raset[1] >> 8), byte(raset[1] & 0xff)})
 	st.command(MADCTL, []byte{madctl})
 }
 
@@ -191,7 +191,7 @@ func (st *ST7789) FillRectangle(x, y, width, height int16, c color.RGBA) error {
 	c1 := uint8(c565 >> 8)
 	c2 := uint8(c565)
 
-	fb := make([]uint8, st.width*st.height*2)
+	fb := make([]uint8, uint16(width)*uint16(height)*2)
 	for i := 0; i < len(fb)/2; i++ {
 		fb[i*2] = c1
 		fb[i*2+1] = c2
