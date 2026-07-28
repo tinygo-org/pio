@@ -1,0 +1,41 @@
+diff --git a/rp2-pio/piolib/rmii-rx-extclk.go b/rp2-pio/piolib/rmii-rx-extclk.go
+index 5f35925..c124dfd 100644
+--- a/rp2-pio/piolib/rmii-rx-extclk.go
++++ b/rp2-pio/piolib/rmii-rx-extclk.go
+@@ -20,6 +20,12 @@ type RMIIRxConfig struct {
+ 	IRQ uint8
+ 	// IRQSource is the triggering source for state machine. Varies between 0..3 on RP2040 and extends to 0..7 on RP2350.
+ 	IRQSourceIndex uint8
++	// SamplePhaseDelay tunes the SFD alignment delay (PIO cycles at the RX
++	// clock rate) after RX1's rising edge, before the read loop starts.
++	// Encoded as delay+1 so a zero-cycle delay stays sweepable: 0 selects the
++	// default (1 cycle, the previously hardcoded value); 1..32 select delays
++	// 0..31 explicitly. See rx-edge-fix-revalidation.md for the sweep metric.
++	SamplePhaseDelay uint8
+ }
+ 
+ // RMIIRx is a PIO-based RMII receiver. It samples RX0, RX1 and CRS_DV at
+@@ -46,6 +52,14 @@ func (r *RMIIRx) Configure(PIO *pio.PIO, cfg RMIIRxConfig) error {
+ 	if err != nil {
+ 		return err
+ 	}
++	phaseDelay := uint8(1)
++	if cfg.SamplePhaseDelay != 0 {
++		if cfg.SamplePhaseDelay > 32 {
++			// PIO delay field is 5 bits; larger values would silently truncate.
++			return errors.New("RMIIRx: SamplePhaseDelay out of range, max 32 (encodes delay+1)")
++		}
++		phaseDelay = cfg.SamplePhaseDelay - 1
++	}
+ 	const (
+ 		idxRX0 = iota
+ 		idxRX1
+@@ -63,7 +77,7 @@ func (r *RMIIRx) Configure(PIO *pio.PIO, cfg RMIIRxConfig) error {
+ 			Copyright (c) 2021 Sandeep Mistry
+ 		*/
+ 		asm.WaitPin(polRising, idxCRSDV).Encode(),
+-		asm.WaitPin(polRising, idxRX1).Delay(1).Encode(), // Delay modified from rscott version, yields better results.
++		asm.WaitPin(polRising, idxRX1).Delay(phaseDelay).Encode(), // Tunable SFD alignment delay, sweep via cfg.SamplePhaseDelay.
+ 		labelLoop:// main read loop while CRSDV is high at byte boundary.
+ 		asm.In(pio.InSrcPins, 2).Encode(),
+ 		asm.Jmp(pio.JmpPinInput, labelLoop).Encode(),
