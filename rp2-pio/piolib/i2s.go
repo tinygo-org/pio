@@ -5,6 +5,7 @@ package piolib
 import (
 	"errors"
 	"machine"
+	"time"
 
 	pio "github.com/tinygo-org/pio/rp2-pio"
 )
@@ -12,8 +13,9 @@ import (
 // I2S is a wrapper around a PIO state machine that implements I2S.
 // Currently only supports writing to the I2S peripheral.
 type I2S struct {
-	sm      pio.StateMachine
-	offset  uint8
+	sm        pio.StateMachine
+	offset    uint8
+	fifoSleep uint32
 }
 
 // NewI2S creates a new I2S peripheral using the given PIO state machine.
@@ -65,6 +67,11 @@ func NewI2S(sm pio.StateMachine, data, clockAndNext machine.Pin) (*I2S, error) {
 	cfg.SetSidesetPins(clockAndNext)
 	cfg.SetOutShift(false, true, 32)
 
+	// Join the RX and TX FIFOs into a single TX FIFO of depth 8.
+	// This will likely need removing if reads get implemented,
+	// but it's just an optimization, it shouldn't break anything.
+	cfg.SetFIFOJoin(pio.FifoJoinTx)
+
 	sm.Init(offset, cfg)
 
 	pinMask := uint32(1<<data) | uint32(0b11<<clockAndNext)
@@ -91,6 +98,20 @@ func (i2s *I2S) SetSampleFrequency(freq uint32) error {
 		return err
 	}
 	i2s.sm.SetClkDiv(whole, frac)
+
+	// Each FIFO entry is one 32-bit word.  Each audio frame is also
+	// one 32-bit word.  Calculate how long that takes to play so we
+	// can sleep for long enough to clear a FIFO entry to write into
+	// whenever we have frames to write but the FIFO is full.
+	frameTime := uint32(time.Second) / freq
+	// N.B. time.Second < math.MaxUint32 => this never overflows
+	// (frameTime == 22675ns @ 44.1kHz, 20833ns @ 48kHz)
+
+	// Sleep for at least 1 bit of audio output longer, so we never
+	// end our sleep exactly as the final bit is output and so end up
+	// sleeping a whole other frame.
+	i2s.fifoSleep = frameTime + frameTime/32
+
 	return nil
 }
 
@@ -106,11 +127,17 @@ func (i2s *I2S) WriteStereo(b []uint32) (int, error) {
 
 // ReadMono reads a mono audio buffer from the I2S peripheral.
 func (i2s *I2S) ReadMono(p []uint16) (n int, err error) {
+	// You probably need to remove the cfg.SetFIFOJoin in NewI2S if
+	// you're implementing reading or you won't have a FIFO to read
+	// into.
 	return 0, errors.ErrUnsupported
 }
 
 // ReadStereo reads a stereo audio buffer from the I2S peripheral.
 func (i2s *I2S) ReadStereo(p []uint32) (n int, err error) {
+	// You probably need to remove the cfg.SetFIFOJoin in NewI2S if
+	// you're implementing reading or you won't have a FIFO to read
+	// into.
 	return 0, errors.ErrUnsupported
 }
 
@@ -121,7 +148,7 @@ func i2sWrite[T uint16 | uint32](i2s *I2S, b []T) (int, error) {
 	i := 0
 	for i < len(b) {
 		if i2s.sm.IsTxFIFOFull() {
-			gosched()
+			time.Sleep(time.Duration(i2s.fifoSleep))
 			continue
 		}
 		i2s.sm.TxPut(uint32(b[i]))
