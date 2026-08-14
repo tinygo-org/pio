@@ -41,6 +41,7 @@ type RMIITxConfig struct {
 	TxBuffer []byte
 	// TxBase is the first pin of the consecutive, ordered set [TX0,TX1,TXEN]
 	TxBase machine.Pin
+	// RefClk is the pin to REFCLK a.k.a RETCLK or EXTCLK. This is the external clock we synchronize with.
 	RefClk machine.Pin
 }
 
@@ -134,7 +135,8 @@ func (r *RMIITxExtClk) Configure(PIO *pio.PIO, cfg RMIITxConfig) error {
 		// Idle bus and Inter-Packet Gap (12 byte times total).
 		asm.Set(pio.SetDestPins, 0b000).Delay(uint8(txByte - 1)).Encode(), // 1 byte.
 		asm.Set(pio.SetDestX, 9).Encode(),                                 // 10-iteration loop.
-		labelIPG:                                                          asm.Jmp(pio.JmpXNZeroDec, labelIPG).Delay(uint8(txByte)).Encode(), // 10 bytes.
+		labelIPG:// 10 bytes.
+		asm.Jmp(pio.JmpXNZeroDec, labelIPG).Delay(uint8(txByte)).Encode(),
 		// .wrap → back to pull block (1 byte).
 	}
 
