@@ -46,9 +46,12 @@ func (st *ST7789) SetBacklight(on bool) {
 }
 
 func (st *ST7789) CommonInit() {
-	st.dc.Configure(machine.PinConfig{Mode: machine.PinOutput})
-	st.cs.Configure(machine.PinConfig{Mode: machine.PinOutput})
-	st.cs.High() // Deassert chip select until the first command.
+	// Assume the caller has configured cs/dc/rd as outputs at safe idle
+	// levels (CS high, DC high, RD high) BEFORE the PIO parallel bus was
+	// brought up, so no stray bytes from PIO startup were latched by the
+	// panel. Give the panel a brief moment for VDDI/VCI to settle after any
+	// warm reset before issuing the first command.
+	time.Sleep(10 * time.Millisecond)
 
 	// Keep the panel dark until the init sequence has finished.
 	st.SetBacklight(false)

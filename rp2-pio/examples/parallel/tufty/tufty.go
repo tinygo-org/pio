@@ -22,6 +22,19 @@ const (
 func main() {
 	time.Sleep(5 * time.Second) // wait for the USB CDC console to enumerate
 
+	// Configure control pins to safe idle levels BEFORE bringing up the PIO
+	// parallel bus. If CS or DC are floating while the PIO state machine
+	// starts and puts its initial (zeroed) OSR contents on the bus, the
+	// panel intermittently latches stray bytes as commands, leaving the
+	// display in an unknown state that manifests as "sometimes it doesn't
+	// come up after reset".
+	csPin.Configure(machine.PinConfig{Mode: machine.PinOutput})
+	csPin.High() // CS idle high (panel deselected)
+	dcPin.Configure(machine.PinConfig{Mode: machine.PinOutput})
+	dcPin.High() // DC idle in data mode
+	rdPin.Configure(machine.PinConfig{Mode: machine.PinOutput})
+	rdPin.High() // RD held high so the panel accepts writes
+
 	const MHz = 1_000_000
 	sm, _ := pio.PIO0.ClaimStateMachine()
 
@@ -46,11 +59,6 @@ func main() {
 		height:   240,
 		rotation: Rotation0,
 	}
-
-	// RD must be configured as an output and held high (deasserted) for the
-	// ST7789 to accept writes on the parallel bus.
-	rdPin.Configure(machine.PinConfig{Mode: machine.PinOutput})
-	rdPin.High()
 
 	// Feed the PIO TX FIFO by DMA so large pixel writes do not block on the CPU.
 	if err := display.pl.EnableDMA(true); err != nil {
