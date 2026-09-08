@@ -9,23 +9,23 @@ import (
 	"github.com/tinygo-org/pio/rp2-pio/piolib"
 )
 
-const clockHz = 133000000
-
 // Pimoroni Tufty definitions https://tinygo.org/docs/reference/microcontrollers/tufty2040/
 const (
-	csPin  = machine.GP10
-	dcPin  = machine.GP11
-	wrPin  = machine.GP12
-	db0Pin = machine.GP14
-	rdPin  = machine.GP13
-	blPin  = machine.GP2
+	csPin  = machine.GPIO10 // LCD_CS
+	dcPin  = machine.GPIO11 // LCD_DC
+	wrPin  = machine.GPIO12 // LCD_WR
+	db0Pin = machine.GPIO14 // LCD_DB0..DB7 = GPIO14..GPIO21
+	rdPin  = machine.GPIO13 // LCD_RD
+	blPin  = machine.GPIO2  // LCD_BACKLIGHT
 )
 
 func main() {
-	time.Sleep(5 * time.Second)
-	println("Initializing Display")
+	time.Sleep(5 * time.Second) // wait for the USB CDC console to enumerate
+
 	const MHz = 1_000_000
 	sm, _ := pio.PIO0.ClaimStateMachine()
+
+	// Drive the 8 bit parallel bus from PIO, clocking data out on WR.
 	p8tx, err := piolib.NewParallel(sm, piolib.ParallelConfig{
 		Baud:        1 * MHz,
 		Clock:       wrPin,
@@ -47,21 +47,22 @@ func main() {
 		rotation: Rotation0,
 	}
 
-	if err != nil {
-		panic(err.Error())
-	}
-	display.pl.Tx8([]byte("Hello World"))
-	// Setup DMA
-	println("Setting Up DMA")
-	// display.pl.EnableDMA(2)
+	// RD must be configured as an output and held high (deasserted) for the
+	// ST7789 to accept writes on the parallel bus.
+	rdPin.Configure(machine.PinConfig{Mode: machine.PinOutput})
 	rdPin.High()
 
-	println("Display Common Init")
+	// Feed the PIO TX FIFO by DMA so large pixel writes do not block on the CPU.
+	if err := display.pl.EnableDMA(true); err != nil {
+		panic(err.Error())
+	}
+
 	display.CommonInit()
 
-	println("Making Screen Blue")
-	blue := color.RGBA{255, 255, 255, 255}
-	display.FillRectangle(0, 0, 320, 240, blue)
+	blue := color.RGBA{0, 0, 255, 255}
+	if err := display.FillRectangle(0, 0, 320, 240, blue); err != nil {
+		panic(err.Error())
+	}
 }
 
 type Displayer interface {
