@@ -24,6 +24,11 @@ type ST7789 struct {
 	height   uint16
 	rotation Rotation
 
+	// Framebuffer of RGB565 pixels laid out row-major with each pixel
+	// stored high-byte-first, so it can be streamed straight to the panel
+	// (RAMCTRL=0xC0, big-endian pixel data) with no byte-swap on send.
+	fb []byte
+
 	//Copied stuff from the TinyGo Drivers implementation
 	buf [6]byte
 }
@@ -161,13 +166,40 @@ func (st *ST7789) Size() (w, h int16) {
 	return int16(st.width), int16(st.height)
 }
 
+// SetPixel writes a single RGB565 pixel into the framebuffer. Out-of-range
+// coordinates are silently ignored to match tinygo.org/x/drivers.Displayer.
 func (st *ST7789) SetPixel(x, y int16, c color.RGBA) {
-	st.FillRectangle(x, y, 1, 1, c) // errors ignored: out-of-range pixels are a no-op
+	if x < 0 || y < 0 || x >= int16(st.width) || y >= int16(st.height) {
+		return
+	}
+	c565 := RGBATo565(c)
+	i := (int(y)*int(st.width) + int(x)) * 2
+	st.fb[i] = uint8(c565 >> 8) // panel expects high byte first
+	st.fb[i+1] = uint8(c565)    // low byte
 }
 
-// Display is a no-op: FillRectangle and SetPixel write directly to panel RAM;
-// it satisfies Displayer.
+// Display streams the framebuffer to the panel with a single RAMWR.
 func (st *ST7789) Display() error {
+	st.setWindow(0, 0, int16(st.width), int16(st.height))
+
+	st.dc.Low()
+	st.cs.Low()
+	st.pl.Tx8([]byte{RAMWR})
+	// Same DC settle as command() and FillRectangle: let the RAMWR
+	// command byte's WR edge land before flipping DC into the data
+	// phase, otherwise the command byte can be corrupted mid-latch.
+	time.Sleep(10 * time.Microsecond)
+	st.dc.High()
+
+	// Stream the whole framebuffer in one go. piolib.Parallel.Tx8 already
+	// chunks internally when DMA is enabled, so a single call is fine.
+	if err := st.pl.Tx8(st.fb); err != nil {
+		st.cs.High()
+		return err
+	}
+	// Let the last WR edge land before releasing CS (see command()).
+	time.Sleep(10 * time.Microsecond)
+	st.cs.High()
 	return nil
 }
 
