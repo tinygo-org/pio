@@ -67,9 +67,88 @@ func main() {
 
 	display.CommonInit()
 
+	rotations := []Rotation{Rotation0, Rotation90, Rotation180, Rotation270}
+	palette := []color.RGBA{
+		{255, 255, 255, 255}, // white
+		{255, 0, 0, 255},     // red
+		{0, 255, 0, 255},     // green
+		{255, 255, 0, 255},   // yellow
+	}
+	black := color.RGBA{0, 0, 0, 255}
 	blue := color.RGBA{0, 0, 255, 255}
-	if err := display.FillRectangle(0, 0, 320, 240, blue); err != nil {
-		panic(err.Error())
+
+	pause := func() { time.Sleep(2 * time.Second) }
+
+	for {
+		for _, rotation := range rotations {
+			// Reposition the addressing window and MADCTL for the new
+			// orientation. This is much cheaper than a full CommonInit,
+			// which would re-run the panel's power-on sequence.
+			display.configureDisplayRotation(rotation)
+			w, h := display.Size()
+
+			// Stage 1: full screen blue fill.
+			if err := display.FillRectangle(0, 0, w, h, blue); err != nil {
+				panic(err.Error())
+			}
+			pause()
+
+			// Stage 2: quadrant fill, white/red/green/yellow, TL/TR/BL/BR.
+			hw, hh := w/2, h/2
+			if err := display.FillRectangle(0, 0, hw, hh, palette[0]); err != nil {
+				panic(err.Error())
+			}
+			if err := display.FillRectangle(hw, 0, w-hw, hh, palette[1]); err != nil {
+				panic(err.Error())
+			}
+			if err := display.FillRectangle(0, hh, hw, h-hh, palette[2]); err != nil {
+				panic(err.Error())
+			}
+			if err := display.FillRectangle(hw, hh, w-hw, h-hh, palette[3]); err != nil {
+				panic(err.Error())
+			}
+			pause()
+
+			// Stage 3: four colored boxes, one per corner, on a black background.
+			if err := display.FillRectangle(0, 0, w, h, black); err != nil {
+				panic(err.Error())
+			}
+			boxW, boxH := w/6, h/6
+			if err := display.FillRectangle(0, 0, boxW, boxH, palette[0]); err != nil {
+				panic(err.Error())
+			}
+			if err := display.FillRectangle(w-boxW, 0, boxW, boxH, palette[1]); err != nil {
+				panic(err.Error())
+			}
+			if err := display.FillRectangle(0, h-boxH, boxW, boxH, palette[2]); err != nil {
+				panic(err.Error())
+			}
+			if err := display.FillRectangle(w-boxW, h-boxH, boxW, boxH, palette[3]); err != nil {
+				panic(err.Error())
+			}
+			pause()
+
+			// Stage 4: fill stress test. Concentric 1px rings, alternating
+			// a palette color and black, shrinking the window by 2px (1px
+			// per edge) each fill.
+			x, y, rw, rh := int16(0), int16(0), w, h
+			ci := 0
+			for rw > 0 && rh > 0 {
+				if err := display.FillRectangle(x, y, rw, rh, palette[ci%len(palette)]); err != nil {
+					panic(err.Error())
+				}
+				ci++
+				x, y, rw, rh = x+1, y+1, rw-2, rh-2
+				if rw <= 0 || rh <= 0 {
+					break
+				}
+				if err := display.FillRectangle(x, y, rw, rh, black); err != nil {
+					panic(err.Error())
+				}
+				x, y, rw, rh = x+1, y+1, rw-2, rh-2
+			}
+			pause()
+		}
 	}
 }
 

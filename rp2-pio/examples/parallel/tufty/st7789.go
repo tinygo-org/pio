@@ -95,28 +95,35 @@ func (st *ST7789) CommonInit() {
 }
 
 func (st *ST7789) configureDisplayRotation(rotation Rotation) {
-	var madctl uint8
-	var rotate180 bool
-	caset := []uint16{0, 0}
-	raset := []uint16{0, 0}
+	st.rotation = rotation
+	portrait := rotation == Rotation90 || rotation == Rotation270
+	flipped := rotation == Rotation180 || rotation == Rotation270
 
-	if rotation == Rotation180 || rotation == Rotation90 {
-		rotate180 = true
-	}
-	if rotation == Rotation90 || rotation == Rotation270 {
-		st.width, st.height = st.height, st.width
-	}
-
-	caset[0] = 0
-	caset[1] = 319
-	raset[0] = 0
-	raset[1] = 239
-	if rotate180 {
-		madctl = COL_ORDER
+	if portrait {
+		st.width, st.height = 240, 320
 	} else {
-		madctl = ROW_ORDER
+		st.width, st.height = 320, 240
 	}
-	madctl |= SWAP_XY | SCAN_ORDER
+
+	var madctl uint8
+	if portrait {
+		// MV=0: DDRAM columns/rows map directly to physical X/Y.
+		if flipped {
+			madctl = ROW_ORDER | COL_ORDER
+		}
+	} else {
+		// MV=1: DDRAM columns/rows are transposed onto physical Y/X.
+		if flipped {
+			madctl = COL_ORDER
+		} else {
+			madctl = ROW_ORDER
+		}
+		madctl |= SWAP_XY
+	}
+	madctl |= SCAN_ORDER
+
+	caset := []uint16{0, st.width - 1}
+	raset := []uint16{0, st.height - 1}
 
 	// CASET/RASET take big-endian 16 bit values.
 	st.command(CASET, []byte{byte(caset[0] >> 8), byte(caset[0]), byte(caset[1] >> 8), byte(caset[1])})
