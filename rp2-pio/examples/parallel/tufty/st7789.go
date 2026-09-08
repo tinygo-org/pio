@@ -112,9 +112,9 @@ func (st *ST7789) configureDisplayRotation(rotation Rotation) {
 	raset[0] = 0
 	raset[1] = 239
 	if rotate180 {
-		madctl = ROW_ORDER
-	} else {
 		madctl = COL_ORDER
+	} else {
+		madctl = ROW_ORDER
 	}
 	madctl |= SWAP_XY | SCAN_ORDER
 
@@ -130,6 +130,10 @@ func (st *ST7789) command(command byte, data []byte) {
 	st.pl.Tx8([]byte{command})
 
 	if len(data) > 0 {
+		// Tx8 can return a couple of PIO cycles before the command byte's
+		// final WR edge actually lands. Settle before flipping DC, so the
+		// data phase doesn't start (and DC doesn't change) mid-command.
+		time.Sleep(10 * time.Microsecond)
 		st.dc.High()
 		st.pl.Tx8(data)
 	}
@@ -177,6 +181,9 @@ func (st *ST7789) FillRectangle(x, y, width, height int16, c color.RGBA) error {
 	st.dc.Low()
 	st.cs.Low()
 	st.pl.Tx8([]byte{RAMWR})
+	// Same settle as command(): let the RAMWR command byte's WR edge land
+	// before flipping DC into the data phase.
+	time.Sleep(10 * time.Microsecond)
 	st.dc.High()
 	remaining := int(width) * int(height) * 2
 	for remaining > 0 {
