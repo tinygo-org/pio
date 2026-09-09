@@ -32,6 +32,17 @@ type ParallelConfig struct {
 }
 
 func NewParallel(sm pio.StateMachine, cfg ParallelConfig) (*Parallel, error) {
+	if cfg.BusWidth == 0 {
+		return nil, errors.New("zero bus width")
+	}
+	if cfg.BusWidth > 32 {
+		return nil, errors.New("bus width exceeds 32 pins")
+	}
+	pins, err := parallelPinConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	const sideSetBitCount = 1
 	const programOrigin = -1
 	asm := pio.AssemblerV0{
@@ -49,8 +60,6 @@ func NewParallel(sm pio.StateMachine, cfg ParallelConfig) (*Parallel, error) {
 		return nil, errors.New("bits per pull must be multiple of bus width")
 	} else if cfg.BitsPerPull < cfg.BusWidth {
 		return nil, errors.New("bits per pull must be greater or equal to bus width")
-	} else if cfg.BusWidth == 0 {
-		return nil, errors.New("zero bus width")
 	}
 	piofreq := cfg.Baud * uint32(len(program))
 	whole, frac, err := pio.ClkDivFromFrequency(piofreq, machine.CPUFrequency())
@@ -64,28 +73,26 @@ func NewParallel(sm pio.StateMachine, cfg ParallelConfig) (*Parallel, error) {
 	if err != nil {
 		return nil, err
 	}
+	setParallelGPIOBase(Pio, pins.gpioBase)
 
-	clkMask := uint32(1) << cfg.Clock
-	pinMask := clkMask
 	pinCfg := machine.PinConfig{Mode: Pio.PinMode()}
 	for pinoff := 0; pinoff < int(cfg.BusWidth); pinoff++ {
 		pin := cfg.DataBase + machine.Pin(pinoff)
-		pinMask |= 1 << pin
 		pin.Configure(pinCfg)
 	}
 	cfg.Clock.Configure(pinCfg)
 
 	scfg := asm.DefaultStateMachineConfig(progOffset, program[:])
 
-	scfg.SetOutPins(cfg.DataBase, cfg.BusWidth)
+	scfg.SetOutPins(pins.dataBase, cfg.BusWidth)
 	scfg.SetOutShift(true, true, uint16(cfg.BitsPerPull))
-	scfg.SetSidesetPins(cfg.Clock)
+	scfg.SetSidesetPins(pins.clock)
 
 	scfg.SetClkDivIntFrac(whole, frac)
 	scfg.SetFIFOJoin(pio.FifoJoinTx)
 
-	sm.SetPinsMasked(0, pinMask)
-	sm.SetPindirsMasked(pinMask, pinMask)
+	sm.SetPinsMasked(0, pins.pinMask)
+	sm.SetPindirsMasked(pins.pinMask, pins.pinMask)
 	sm.Init(progOffset, scfg)
 	sm.SetEnabled(true)
 	return &Parallel{
