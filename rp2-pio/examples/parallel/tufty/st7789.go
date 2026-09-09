@@ -29,82 +29,65 @@ type ST7789 struct {
 }
 
 func (st *ST7789) SetBacklight(on bool) {
-	if st.bl != machine.NoPin {
-		pwm := machine.PWM1 // LCD LED on Tufty2040 corresponds to PWM1.
-		// Configure the PWM
-		pwm.Configure(machine.PWMConfig{})
-		ch, err := pwm.Channel(st.bl)
-		if err != nil {
-			println(err.Error())
-			return
-		}
-		if on {
-			pwm.Set(ch, pwm.Top())
-			return
-		}
-		pwm.Set(ch, 0)
+	if st.bl == machine.NoPin {
 		return
 	}
-	println("no backlight pin defined")
+	pwm := machine.PWM1 // LCD LED on Tufty2040 corresponds to PWM1.
+	pwm.Configure(machine.PWMConfig{})
+	ch, err := pwm.Channel(st.bl)
+	if err != nil {
+		return
+	}
+	if on {
+		pwm.Set(ch, pwm.Top()) // full brightness
+		return
+	}
+	pwm.Set(ch, 0) // off
 }
 
 func (st *ST7789) CommonInit() {
-	st.dc.Configure(machine.PinConfig{Mode: machine.PinOutput})
-	st.cs.Configure(machine.PinConfig{Mode: machine.PinOutput})
+	// Assume the caller has configured cs/dc/rd as outputs at safe idle
+	// levels (CS high, DC high, RD high) BEFORE the PIO parallel bus was
+	// brought up, so no stray bytes from PIO startup were latched by the
+	// panel. Give the panel a brief moment for VDDI/VCI to settle after any
+	// warm reset before issuing the first command.
+	time.Sleep(10 * time.Millisecond)
 
-	// Configure Backlight Pin
+	// Keep the panel dark until the init sequence has finished.
 	st.SetBacklight(false)
 
-	println("SWRESET")
-	st.command(SWRESET, []byte{})
+	st.command(SWRESET, []byte{}) // software reset
 
-	time.Sleep(150 * time.Millisecond)
+	time.Sleep(150 * time.Millisecond) // reset needs 120ms before further commands
 
-	//Common Init
-	println("TEON")
-	st.command(TEON, []byte{})
-	println("COLMOD")
-	st.command(COLMOD, []byte{0x05}) // 16 bits per pixel
-	println("PORCTRL")
-	st.command(PORCTRL, []byte{0x0c, 0x0c, 0x00, 0x33, 0x33})
-	println("LCMCTRL")
-	st.command(LCMCTRL, []byte{0x2c})
-	println("VDVVHREN")
-	st.command(VDVVRHEN, []byte{0x01})
-	println("VRHS")
-	st.command(VRHS, []byte{0x12})
-	println("VDVS")
-	st.command(VDVS, []byte{0x20})
-	println("PWCTRL1")
-	st.command(PWCTRL1, []byte{0xa4, 0xa1})
-	println("FRCTRL2")
-	st.command(FRCTRL2, []byte{0x0f})
+	st.command(COLMOD, []byte{0x05})                          // 16 bits per pixel
+	st.command(PORCTRL, []byte{0x0c, 0x0c, 0x00, 0x33, 0x33}) // porch intervals
+	st.command(LCMCTRL, []byte{0x2c})                         // LCM control
+	st.command(VDVVRHEN, []byte{0x01})                        // take VDV and VRH from the command registers
+	st.command(VRHS, []byte{0x12})                            // VRH ~4.45V
+	st.command(VDVS, []byte{0x20})                            // VDV 0V
+	st.command(PWCTRL1, []byte{0xa4, 0xa1})                   // AVDD 6.8V, AVCL -4.8V, VDS 2.3V
+	st.command(FRCTRL2, []byte{0x0f})                         // 60Hz frame rate
+	st.command(RAMCTRL, []byte{0x00, 0xc0})                   // MCU interface, big endian pixel data
+	st.command(GCTRL, []byte{0x35})                           // gate voltages VGH 13.26V, VGL -10.43V
+	st.command(VCOMS, []byte{0x1b})                           // VCOM 0.875V
 
-	// Tufty is 320x240
-	println("GCTRL")
-	st.command(GCTRL, []byte{0x35})
-	println("VCOMS")
-	st.command(VCOMS, []byte{0x1f})
-	println("0xD6")
-	st.command(0xD6, []byte{0xa1}) // ???
-	println("GMCTRP1")
-	st.command(GMCTRP1, []byte{0xD0, 0x08, 0x11, 0x08, 0x0C, 0x15, 0x39, 0x33, 0x50, 0x36, 0x13, 0x14, 0x29, 0x2D})
-	println("GMCTRN1")
-	st.command(GMCTRN1, []byte{0xD0, 0x08, 0x10, 0x08, 0x06, 0x06, 0x39, 0x44, 0x51, 0x0B, 0x16, 0x14, 0x2F, 0x31})
+	// Gamma correction curves tuned for the Tufty panel.
+	st.command(GMCTRP1, []byte{0xf0, 0x00, 0x06, 0x04, 0x05, 0x05, 0x31, 0x44, 0x48, 0x36, 0x12, 0x12, 0x2b, 0x34}) // positive
+	st.command(GMCTRN1, []byte{0xf0, 0x0b, 0x0f, 0x0f, 0x0d, 0x26, 0x31, 0x43, 0x47, 0x38, 0x14, 0x14, 0x2c, 0x32}) // negative
 
-	println("INVON")
-	st.command(INVON, []byte{})
-	println("SLPOUT")
-	st.command(SLPOUT, []byte{})
-	println("DISPON")
-	st.command(DISPON, []byte{})
+	st.command(INVON, []byte{})  // set inversion mode
+	st.command(SLPOUT, []byte{}) // leave sleep mode
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond) // sleep out needs 120ms before the display is driven
 
-	// Configure Display Rotation
-	st.configureDisplayRotation(st.rotation)
+	st.configureDisplayRotation(st.rotation) // set the addressing window and scan order
 
-	println("Turning on backlight")
+	st.command(TEON, []byte{0x00})      // enable frame sync signal
+	st.command(STE, []byte{0x00, 0x00}) // sync on scanline 0
+	st.command(DISPON, []byte{})        // turn display on
+
+	// Panel is now driven, so it is safe to light the backlight.
 	if st.bl != machine.NoPin {
 		time.Sleep(50 * time.Millisecond)
 		st.SetBacklight(true)
@@ -112,36 +95,39 @@ func (st *ST7789) CommonInit() {
 }
 
 func (st *ST7789) configureDisplayRotation(rotation Rotation) {
-	var madctl uint8
-	var rotate180 bool
-	caset := []uint16{0, 0}
-	raset := []uint16{0, 0}
+	st.rotation = rotation
+	portrait := rotation == Rotation90 || rotation == Rotation270
+	flipped := rotation == Rotation180 || rotation == Rotation270
 
-	if rotation == Rotation180 || rotation == Rotation90 {
-		rotate180 = true
-	}
-	if rotation == Rotation90 || rotation == Rotation270 {
-		st.width, st.height = st.height, st.width
-	}
-
-	caset[0] = 0
-	caset[1] = 319
-	raset[0] = 0
-	raset[1] = 239
-	if rotate180 {
-		madctl = ROW_ORDER
+	if portrait {
+		st.width, st.height = 240, 320
 	} else {
-		madctl = COL_ORDER
+		st.width, st.height = 320, 240
 	}
-	madctl |= SWAP_XY | SCAN_ORDER
 
-	caset[0] = (caset[0] << 8) | ((caset[0] >> 8) & 0xFF)
-	caset[1] = (caset[1] << 8) | ((caset[1] >> 8) & 0xFF)
-	raset[0] = (raset[0] << 8) | ((raset[0] >> 8) & 0xFF)
-	raset[1] = (raset[1] << 8) | ((raset[1] >> 8) & 0xFF)
+	var madctl uint8
+	if portrait {
+		// MV=0: DDRAM columns/rows map directly to physical X/Y.
+		if flipped {
+			madctl = ROW_ORDER | COL_ORDER
+		}
+	} else {
+		// MV=1: DDRAM columns/rows are transposed onto physical Y/X.
+		if flipped {
+			madctl = COL_ORDER
+		} else {
+			madctl = ROW_ORDER
+		}
+		madctl |= SWAP_XY
+	}
+	madctl |= SCAN_ORDER
 
-	st.command(CASET, []byte{byte(caset[0] >> 8), byte(caset[0] & 0xff), byte(caset[1] >> 8), byte(caset[1] & 0xff)})
-	st.command(CASET, []byte{byte(raset[0] >> 8), byte(raset[0] & 0xff), byte(raset[1] >> 8), byte(raset[1] & 0xff)})
+	caset := []uint16{0, st.width - 1}
+	raset := []uint16{0, st.height - 1}
+
+	// CASET/RASET take big-endian 16 bit values.
+	st.command(CASET, []byte{byte(caset[0] >> 8), byte(caset[0]), byte(caset[1] >> 8), byte(caset[1])})
+	st.command(RASET, []byte{byte(raset[0] >> 8), byte(raset[0]), byte(raset[1] >> 8), byte(raset[1])})
 	st.command(MADCTL, []byte{madctl})
 }
 
@@ -149,13 +135,18 @@ func (st *ST7789) command(command byte, data []byte) {
 	st.dc.Low()
 	st.cs.Low()
 	st.pl.Tx8([]byte{command})
-	// st.writeBlockingParallel([]byte{command}, 1)
 
 	if len(data) > 0 {
+		// Tx8 can return a couple of PIO cycles before the command byte's
+		// final WR edge actually lands. Settle before flipping DC, so the
+		// data phase doesn't start (and DC doesn't change) mid-command.
+		time.Sleep(10 * time.Microsecond)
 		st.dc.High()
 		st.pl.Tx8(data)
-		// st.writeBlockingParallel(data, len(data))
 	}
+	// Tx8 returns on TX-stall, which can be a couple of PIO cycles before the
+	// final WR rising edge. Let the bus settle before deasserting CS.
+	time.Sleep(10 * time.Microsecond)
 	st.cs.High()
 }
 
@@ -171,13 +162,10 @@ func (st *ST7789) Size() (w, h int16) {
 }
 
 func (st *ST7789) setWindow(x, y, w, h int16) {
-	x += 0
-	y += 0
 	copy(st.buf[:4], []uint8{uint8(x >> 8), uint8(x), uint8((x + w - 1) >> 8), uint8(x + w - 1)})
 	st.command(CASET, st.buf[:4])
 	copy(st.buf[:4], []uint8{uint8(y >> 8), uint8(y), uint8((y + h - 1) >> 8), uint8(y + h - 1)})
 	st.command(RASET, st.buf[:4])
-	st.command(RAMWR, []byte{})
 }
 
 func (st *ST7789) FillRectangle(x, y, width, height int16, c color.RGBA) error {
@@ -187,15 +175,36 @@ func (st *ST7789) FillRectangle(x, y, width, height int16, c color.RGBA) error {
 		return errors.New("rectangle coordinates outside display area")
 	}
 	st.setWindow(x, y, width, height)
-	c565 := RGBATo565(c)
-	c1 := uint8(c565 >> 8)
-	c2 := uint8(c565)
 
-	fb := make([]uint8, st.width*st.height*2)
-	for i := 0; i < len(fb)/2; i++ {
-		fb[i*2] = c1
-		fb[i*2+1] = c2
+	c565 := RGBATo565(c)
+	// Pre-fill a small chunk once and stream it repeatedly rather than
+	// allocating a whole framebuffer.
+	var chunk [512]byte
+	for j := 0; j < len(chunk); j += 2 {
+		chunk[j] = uint8(c565 >> 8)
+		chunk[j+1] = uint8(c565)
 	}
-	st.command(RAMWR, fb)
+
+	st.dc.Low()
+	st.cs.Low()
+	st.pl.Tx8([]byte{RAMWR})
+	// Same settle as command(): let the RAMWR command byte's WR edge land
+	// before flipping DC into the data phase.
+	time.Sleep(10 * time.Microsecond)
+	st.dc.High()
+	remaining := int(width) * int(height) * 2
+	for remaining > 0 {
+		n := remaining
+		if n > len(chunk) {
+			n = len(chunk)
+		}
+		if err := st.pl.Tx8(chunk[:n]); err != nil {
+			st.cs.High()
+			return err
+		}
+		remaining -= n
+	}
+	time.Sleep(10 * time.Microsecond)
+	st.cs.High()
 	return nil
 }
