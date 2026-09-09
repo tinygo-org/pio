@@ -11,6 +11,7 @@ import (
 const (
 	rp2350ExtraReg = 0
 	numPIO         = 2
+	numPins        = 32
 
 	// validINTEBits defines valid interrupt source bits for RP2040.
 	// RP2040 only supports 12 bits: FIFO status (bits 0-7) and IRQ flags 0-3 (bits 8-11).
@@ -49,6 +50,13 @@ func irqSet(num uint32, enabled bool) {
 		return
 	}
 	irqSetMask(1<<num, enabled)
+}
+
+// SetGPIOBase configures the GPIO base for the PIO block. On RP2040 can only receive 0.
+func (pio *PIO) SetGPIOBase(base uint32) {
+	if base != 0 {
+		panic("tried to set non-zero base on RP2040")
+	}
 }
 
 func irqSetMask(mask uint32, enabled bool) {

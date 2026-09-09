@@ -431,3 +431,24 @@ type noCopy struct{}
 // Lock is a no-op used by -copylocks checker from `go vet`.
 func (*noCopy) Lock()   {}
 func (*noCopy) UnLock() {}
+
+// GPIOBase checks base of used pins. When using ranges of pins
+// you only need to pass in the "highest" pin of the range.
+// if OK is false then pin set is invalid: either
+// they do not share the same base or they are out of device pin range.
+// Base should be then set with [SetGPIOBase] and base value subtracted from pins.
+func GPIOBase(pins ...machine.Pin) (base uint32, ok bool) {
+	ok = true
+	expectLowbase := pins[0] < 32
+	for _, pin := range pins {
+		lowbase := pin < 32
+		if pin >= numPins || expectLowbase != lowbase {
+			ok = false // exceeded number of pins or mismatched base between pins.
+			break
+		}
+	}
+	if ok && !expectLowbase {
+		base = 16
+	}
+	return base, ok
+}
