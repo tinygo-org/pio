@@ -12,7 +12,7 @@ const (
 	rp2350ExtraReg = 1
 	numPIO         = 3
 	_NUMIRQ        = 52
-
+	numPins        = 48
 	// validINTEBits defines valid interrupt source bits for RP2350.
 	// RP2350 supports all 16 bits: FIFO status (bits 0-7) and all IRQ flags 0-7 (bits 8-15).
 	validINTEBits IRQSource = 0xFFFF
