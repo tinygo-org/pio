@@ -161,6 +161,16 @@ func (st *ST7789) Size() (w, h int16) {
 	return int16(st.width), int16(st.height)
 }
 
+func (st *ST7789) SetPixel(x, y int16, c color.RGBA) {
+	st.FillRectangle(x, y, 1, 1, c) // errors ignored: out-of-range pixels are a no-op
+}
+
+// Display is a no-op: FillRectangle and SetPixel write directly to panel RAM;
+// it satisfies Displayer.
+func (st *ST7789) Display() error {
+	return nil
+}
+
 func (st *ST7789) setWindow(x, y, w, h int16) {
 	copy(st.buf[:4], []uint8{uint8(x >> 8), uint8(x), uint8((x + w - 1) >> 8), uint8(x + w - 1)})
 	st.command(CASET, st.buf[:4])
