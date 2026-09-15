@@ -35,6 +35,21 @@ func TestAssemblerV0(t *testing.T) {
 			},
 		},
 		{
+			name: "parallel8_write_cycle",
+			program: []uint16{
+				// The 8080-style bus presents data while WR is low, pulses WR
+				// high for one PIO cycle, then returns it low for the next byte.
+				0: asm1.Out(OutDestPins, 8).Side(0).Encode(),
+				1: asm1.Nop().Side(1).Encode(),
+				2: asm1.Nop().Side(0).Encode(),
+			},
+			expectprog: []uint16{
+				0x6008, // 0: out pins, 8 side 0 (data valid, WR low)
+				0xb042, // 1: nop          side 1 (WR high)
+				0xa042, // 2: nop          side 0 (WR low)
+			},
+		},
+		{
 			name: "spi3w",
 			program: []uint16{
 				//     .wrap_target
