@@ -29,21 +29,21 @@ func NewI2S(sm pio.StateMachine, data, clockAndNext machine.Pin) (*I2S, error) {
 		bitloop0   = 4
 	)
 	// Sideset pin mapping: bit0=BCLK (bit clock), bit1=LRCLK (left/right channel select)
-	// LRCLK=1 for left channel, LRCLK=0 for right channel (I2S standard)
+	// LRCLK=0 for left channel, LRCLK=1 for right channel (Philips I2S bus specification, June 1996)
 	// Each loop outputs 16 bits per channel (1 initial + 15 in loop), 32 bits total per stereo sample
 	asm := pio.AssemblerV0{SidesetBits: 2}
 	var program = [...]uint16{
 		//     .wrap_target
-		bitloop1:// Left channel (LRCLK=1): output 16 bits with BCLK toggling
+		bitloop1:// Right channel (LRCLK=1), bits 31 to 16: output 16 bits with BCLK toggling
 		asm.Out(pio.OutDestPins, 1).Side(0b10).Encode(), // 0: out  pins, 1  BCLK=0, LRCLK=1
 		asm.Jmp(pio.JmpXNZeroDec, bitloop1).Side(0b11).Encode(), // 1: jmp  x--, 0   BCLK=1, LRCLK=1
-		asm.Out(pio.OutDestPins, 1).Side(0b00).Encode(),         // 2: out  pins, 1  BCLK=0, LRCLK=0 (transition to right)
+		asm.Out(pio.OutDestPins, 1).Side(0b00).Encode(),         // 2: out  pins, 1  BCLK=0, LRCLK=0 (transition to left)
 		asm.Set(pio.SetDestX, 14).Side(0b01).Encode(),           // 3: set  x, 14    BCLK=1, LRCLK=0
 
-		bitloop0:// Right channel (LRCLK=0): output 16 bits with BCLK toggling
+		bitloop0:// Left channel (LRCLK=0), bits 15 to 0: output 16 bits with BCLK toggling
 		asm.Out(pio.OutDestPins, 1).Side(0b00).Encode(), // 4: out  pins, 1  BCLK=0, LRCLK=0
 		asm.Jmp(pio.JmpXNZeroDec, bitloop0).Side(0b01).Encode(), // 5: jmp  x--, 4   BCLK=1, LRCLK=0
-		asm.Out(pio.OutDestPins, 1).Side(0b10).Encode(),         // 6: out  pins, 1  BCLK=0, LRCLK=1 (transition to left)
+		asm.Out(pio.OutDestPins, 1).Side(0b10).Encode(),         // 6: out  pins, 1  BCLK=0, LRCLK=1 (transition to right)
 		asm.Set(pio.SetDestX, 14).Side(0b11).Encode(),           // 7: set  x, 14    BCLK=1, LRCLK=1
 		//     .wrap
 	}
@@ -100,6 +100,7 @@ func (i2s *I2S) WriteMono(b []uint16) (int, error) {
 }
 
 // WriteStereo writes a stereo audio buffer to the I2S peripheral.
+// Each value is one frame with the left sample in the low half.
 func (i2s *I2S) WriteStereo(b []uint32) (int, error) {
 	return i2sWrite(i2s, b)
 }
