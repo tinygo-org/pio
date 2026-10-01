@@ -5,16 +5,25 @@ package piolib
 import (
 	"errors"
 	"machine"
+	"unsafe"
 
 	pio "github.com/tinygo-org/pio/rp2-pio"
 )
 
 // I2S is a wrapper around a PIO state machine that implements I2S.
 // Currently only supports writing to the I2S peripheral.
+//
+// Writes are copied into two buffers that DMA sends to the PIO in turn, so
+// audio keeps playing while the next buffer is prepared.
 type I2S struct {
-	sm      pio.StateMachine
-	offset  uint8
+	sm     pio.StateMachine
+	offset uint8
+	dma    dmaChannel
+	bufs   [2][]uint32
+	next   int
 }
+
+const i2sBufferWords = 256
 
 // NewI2S creates a new I2S peripheral using the given PIO state machine.
 func NewI2S(sm pio.StateMachine, data, clockAndNext machine.Pin) (*I2S, error) {
@@ -64,6 +73,7 @@ func NewI2S(sm pio.StateMachine, data, clockAndNext machine.Pin) (*I2S, error) {
 	cfg.SetOutPins(data, 1)
 	cfg.SetSidesetPins(clockAndNext)
 	cfg.SetOutShift(false, true, 32)
+	cfg.SetFIFOJoin(pio.FifoJoinTx)
 
 	sm.Init(offset, cfg)
 
@@ -76,6 +86,11 @@ func NewI2S(sm pio.StateMachine, data, clockAndNext machine.Pin) (*I2S, error) {
 		sm:     sm,
 		offset: offset,
 	}
+	if ch, ok := _DMA.ClaimChannel(); ok {
+		i2s.dma = ch
+		i2s.bufs[0] = make([]uint32, i2sBufferWords)
+		i2s.bufs[1] = make([]uint32, i2sBufferWords)
+	}
 	// This enables the state machine. Good practice to not require users to do this
 	// since they may be confused why nothing is happening.
 	i2s.Enable(true)
@@ -85,7 +100,9 @@ func NewI2S(sm pio.StateMachine, data, clockAndNext machine.Pin) (*I2S, error) {
 
 // SetSampleFrequency sets the sample frequency of the I2S peripheral.
 func (i2s *I2S) SetSampleFrequency(freq uint32) error {
-	freq *= 32 // 32 bits per sample
+	// 32 bits per frame at 2 instructions per bit, as in pico-extras audio_i2s.c
+	// https://github.com/raspberrypi/pico-extras/blob/master/src/rp2_common/pico_audio_i2s/audio_i2s.c
+	freq *= 64
 	whole, frac, err := pio.ClkDivFromFrequency(freq, machine.CPUFrequency())
 	if err != nil {
 		return err
@@ -94,12 +111,15 @@ func (i2s *I2S) SetSampleFrequency(freq uint32) error {
 	return nil
 }
 
-// WriteMono writes a mono audio buffer to the I2S peripheral.
+// WriteMono plays each sample on both channels. It returns once all samples
+// are queued.
 func (i2s *I2S) WriteMono(b []uint16) (int, error) {
 	return i2sWrite(i2s, b)
 }
 
 // WriteStereo writes a stereo audio buffer to the I2S peripheral.
+// Each value is one frame with the left sample in the low half.
+// It returns once all frames are queued.
 func (i2s *I2S) WriteStereo(b []uint32) (int, error) {
 	return i2sWrite(i2s, b)
 }
@@ -115,19 +135,54 @@ func (i2s *I2S) ReadStereo(p []uint32) (n int, err error) {
 }
 
 func i2sWrite[T uint16 | uint32](i2s *I2S, b []T) (int, error) {
-	if len(b) == 0 {
-		return 0, nil
-	}
-	i := 0
-	for i < len(b) {
-		if i2s.sm.IsTxFIFOFull() {
-			gosched()
-			continue
+	if !i2s.dma.IsValid() {
+		for i := 0; i < len(b); {
+			if i2s.sm.IsTxFIFOFull() {
+				gosched()
+				continue
+			}
+			i2s.sm.TxPut(i2sFrame(b[i]))
+			i++
 		}
-		i2s.sm.TxPut(uint32(b[i]))
-		i++
+		return len(b), nil
+	}
+	for i := 0; i < len(b); {
+		buf := i2s.bufs[i2s.next]
+		n := min(len(buf), len(b)-i)
+		for j := 0; j < n; j++ {
+			buf[j] = i2sFrame(b[i+j])
+		}
+		for i2s.dma.busy() {
+			gosched()
+		}
+		i2s.startDMA(buf[:n])
+		i2s.next ^= 1
+		i += n
 	}
 	return len(b), nil
+}
+
+func i2sFrame[T uint16 | uint32](v T) uint32 {
+	f := uint32(v)
+	if i2sIsMono[T]() {
+		f |= f << 16
+	}
+	return f
+}
+
+func i2sIsMono[T uint16 | uint32]() bool {
+	return unsafe.Sizeof(T(0)) == 2
+}
+
+func (i2s *I2S) startDMA(buf []uint32) {
+	hw := i2s.dma.HW()
+	hw.READ_ADDR.Set(uint32(uintptr(unsafe.Pointer(&buf[0]))))
+	hw.WRITE_ADDR.Set(uint32(uintptr(unsafe.Pointer(i2s.sm.TxReg()))))
+	hw.TRANS_COUNT.Set(uint32(len(buf)))
+	cc := dmaDefaultConfig(i2s.dma.ChannelIndex())
+	cc.setTREQ_SEL(dmaPIO_TxDREQ(i2s.sm))
+	cc.setEnable(true)
+	hw.CTRL_TRIG.Set(cc.CTRL)
 }
 
 // Enable enables or disables the I2S peripheral.
