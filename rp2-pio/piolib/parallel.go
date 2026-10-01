@@ -13,6 +13,10 @@ type Parallel struct {
 	sm      pio.StateMachine
 	progOff uint8
 	dma     dmaChannel
+	// asyncPending is true while a transfer started by Tx8Async/Tx16Async/
+	// Tx32Async has not yet been observed as complete by IsTxAsyncBusy or
+	// WaitTxAsync.
+	asyncPending bool
 }
 
 type ParallelConfig struct {
@@ -132,4 +136,74 @@ func (p6 *Parallel) IsDMAEnabled() bool {
 
 func (p6 *Parallel) EnableDMA(enabled bool) error {
 	return p6.dma.helperEnableDMA(enabled)
+}
+
+// Tx32Async starts an asynchronous, DMA-backed transfer of the uint32 buffer
+// to the PIO TX register and returns immediately, without waiting for the
+// transfer to complete.
+//
+// EnableDMA(true) must have been called beforehand; Tx32Async returns an
+// error if DMA is not enabled. It also returns an error, without starting a
+// new transfer, if a previously started async transfer has not yet completed
+// (see IsTxAsyncBusy and WaitTxAsync).
+//
+// data must not be modified, reused for another transfer, or allowed to be
+// garbage collected until the transfer completes: the DMA engine reads
+// directly from its backing array in the background. Use IsTxAsyncBusy to
+// poll for completion, or WaitTxAsync to block until it is done, before
+// touching data again or starting another transfer.
+func (p6 *Parallel) Tx32Async(data []uint32) error { return parallelTxAsync(p6, data) }
+
+// Tx16Async is the uint16 equivalent of Tx32Async. See Tx32Async for the full
+// semantics and buffer-lifetime requirements.
+func (p6 *Parallel) Tx16Async(data []uint16) error { return parallelTxAsync(p6, data) }
+
+// Tx8Async is the uint8 equivalent of Tx32Async. See Tx32Async for the full
+// semantics and buffer-lifetime requirements.
+func (p6 *Parallel) Tx8Async(data []uint8) error { return parallelTxAsync(p6, data) }
+
+// parallelTxAsync implements Tx8Async/Tx16Async/Tx32Async for any supported
+// element type.
+func parallelTxAsync[T uint8 | uint16 | uint32](p6 *Parallel, data []T) error {
+	if p6.asyncPending {
+		if helperPushBusy(p6.sm, p6.dma) {
+			return errBusy
+		}
+		p6.asyncPending = false
+	}
+	if err := helperPushStart(p6.sm, p6.dma, data); err != nil {
+		return err
+	}
+	p6.asyncPending = len(data) != 0
+	return nil
+}
+
+// IsTxAsyncBusy reports whether a transfer started by Tx8Async, Tx16Async, or
+// Tx32Async is still in progress. Completion requires both the DMA channel to
+// have finished moving data into the PIO TX FIFO and the state machine to
+// have finished shifting that data out to the pins, since the two complete a
+// few PIO cycles apart; IsTxAsyncBusy accounts for both.
+//
+// It is safe to call at any time, including when no async transfer was ever
+// started, in which case it returns false.
+func (p6 *Parallel) IsTxAsyncBusy() bool {
+	if !p6.asyncPending {
+		return false
+	}
+	if helperPushBusy(p6.sm, p6.dma) {
+		return true
+	}
+	p6.asyncPending = false
+	return false
+}
+
+// WaitTxAsync blocks until a transfer started by Tx8Async, Tx16Async, or
+// Tx32Async has fully completed, i.e. until IsTxAsyncBusy would return false.
+// It is safe to call even if no async transfer is currently pending.
+func (p6 *Parallel) WaitTxAsync() {
+	if !p6.asyncPending {
+		return
+	}
+	helperPushWait(p6.sm, p6.dma)
+	p6.asyncPending = false
 }

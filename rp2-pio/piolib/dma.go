@@ -208,6 +208,29 @@ func (ch dmaChannel) Push8(dst *byte, src []byte, dreq uint32) error {
 
 // Push32 writes each element of src slice into the memory location at dst.
 func dmaPush[T uint8 | uint16 | uint32](ch dmaChannel, dst *T, src []T, dreq uint32) error {
+	if err := dmaPushStart(ch, dst, src, dreq); err != nil {
+		return err
+	}
+	deadline := ch.dl.newDeadline()
+	for ch.busy() {
+		if deadline.expired() {
+			ch.abort()
+			return errTimeout
+		}
+		gosched()
+	}
+	ch.HW().CTRL_TRIG.ClearBits(rp.DMA_CH0_CTRL_TRIG_EN_Msk)
+	return nil
+}
+
+// dmaPushStart configures and triggers a DMA transfer of src into dst without
+// waiting for it to complete. It returns once the transfer has been started
+// (or with an error if the channel could not be safely reconfigured).
+//
+// The caller must not modify, reuse, or let src go out of scope until the
+// transfer completes, since the DMA engine reads directly from its backing
+// array. Use ch.busy to poll for, or block until, completion.
+func dmaPushStart[T uint8 | uint16 | uint32](ch dmaChannel, dst *T, src []T, dreq uint32) error {
 	// If currently busy we wait until safe to edit hardware registers.
 	deadline := ch.dl.newDeadline()
 	for ch.busy() {
@@ -237,16 +260,6 @@ func dmaPush[T uint8 | uint16 | uint32](ch dmaChannel, dst *T, src []T, dreq uin
 
 	// We begin our DMA transfer here!
 	hw.CTRL_TRIG.Set(cc.CTRL)
-
-	deadline = ch.dl.newDeadline()
-	for ch.busy() {
-		if deadline.expired() {
-			ch.abort()
-			return errTimeout
-		}
-		gosched()
-	}
-	hw.CTRL_TRIG.ClearBits(rp.DMA_CH0_CTRL_TRIG_EN_Msk)
 	return nil
 }
 
