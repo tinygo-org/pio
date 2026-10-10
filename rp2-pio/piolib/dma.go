@@ -12,13 +12,17 @@ import (
 
 var _DMA = &dmaArbiter{}
 
+const machineDMAChannels = 2
+
 type dmaArbiter struct {
 	claimedChannels uint16
 }
 
 // ClaimChannel returns a DMA channel that can be used for DMA transfers.
+// TinyGo machine uses channels 0 and 1 for SPI0 and SPI1, see spi0DMAChannel in
+// src/machine/machine_rp2.go.
 func (arb *dmaArbiter) ClaimChannel() (channel dmaChannel, ok bool) {
-	for i := uint8(0); i < 12; i++ {
+	for i := uint8(machineDMAChannels); i < 12; i++ {
 		ch := arb.Channel(i)
 		if ch.TryClaim() {
 			return ch, true
