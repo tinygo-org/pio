@@ -26,4 +26,4 @@
 go.work
 go.sum
 .vscode
-local
+local*

@@ -1,0 +1,19 @@
+diff --git a/rp2-pio/piolib/rmii-rx-extclk.go b/rp2-pio/piolib/rmii-rx-extclk.go
+index 5f35925..08e3098 100644
+--- a/rp2-pio/piolib/rmii-rx-extclk.go
++++ b/rp2-pio/piolib/rmii-rx-extclk.go
+@@ -46,6 +46,14 @@ func (r *RMIIRx) Configure(PIO *pio.PIO, cfg RMIIRxConfig) error {
+ 	if err != nil {
+ 		return err
+ 	}
++	if frac != 0 {
++		// A fractional divider stretches individual PIO cycles, jittering the
++		// sample instant dibit-to-dibit on top of an already-marginal RXD1
++		// edge. RMIITxExtClk rejects non-multiple-of-50MHz CPU clocks for the
++		// same reason. Integer-divider CPU frequencies at 100 Mbit are
++		// {100, 200, 300} MHz. See rx-edge-fix-revalidation.md.
++		return errors.New("RMIIRx: CPU frequency yields a fractional RX clock divider, not supported")
++	}
+ 	const (
+ 		idxRX0 = iota
+ 		idxRX1

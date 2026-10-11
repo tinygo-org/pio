@@ -1,0 +1,18 @@
+diff --git a/rp2-pio/piolib/rmii-rx-extclk.go b/rp2-pio/piolib/rmii-rx-extclk.go
+index 5f35925..6885067 100644
+--- a/rp2-pio/piolib/rmii-rx-extclk.go
++++ b/rp2-pio/piolib/rmii-rx-extclk.go
+@@ -102,8 +102,11 @@ func (r *RMIIRx) Configure(PIO *pio.PIO, cfg RMIIRxConfig) error {
+ 	var rxPinMsk uint32 = 0b111 << rxPin
+ 	rxSM.SetPindirsMasked(0, rxPinMsk)
+ 
+-	// Optional: bypass input synchronizers for lower latency
+-	PIO.SetInputSyncBypassMasked(rxPinMsk, rxPinMsk)
++	// Input synchronizers left enabled — the datasheet default ("If in doubt,
++	// leave this register as all zeroes", RP2040 §3.5.6.3). Hygiene, not a
++	// fix: the 2-flop sync resolves metastable levels but cannot correct a
++	// wrong-phase sample of the marginal RXD1 edge, so no error-rate change
++	// is expected from this alone. See rx-edge-fix-revalidation.md.
+ 	r.dma.helperEnableDMA(true)
+ 	r.sm = rxSM
+ 	r.rxOff = rxoff

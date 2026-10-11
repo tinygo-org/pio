@@ -1,0 +1,84 @@
+diff --git a/rp2-pio/piolib/rmii-rx-extclk.go b/rp2-pio/piolib/rmii-rx-extclk.go
+index 5f35925..2bd0528 100644
+--- a/rp2-pio/piolib/rmii-rx-extclk.go
++++ b/rp2-pio/piolib/rmii-rx-extclk.go
+@@ -20,6 +20,11 @@ type RMIIRxConfig struct {
+ 	IRQ uint8
+ 	// IRQSource is the triggering source for state machine. Varies between 0..3 on RP2040 and extends to 0..7 on RP2350.
+ 	IRQSourceIndex uint8
++	// RefClk is the PHY's 50 MHz RMII reference clock pin (required, 1-31).
++	// RX dibits are sampled on RefClk edges instead of free-running the state
++	// machine, locking the sample phase to the clock the PHY drives data on.
++	// See rx-edge-fix-revalidation.md.
++	RefClk machine.Pin
+ }
+ 
+ // RMIIRx is a PIO-based RMII receiver. It samples RX0, RX1 and CRS_DV at
+@@ -42,17 +47,23 @@ func (r *RMIIRx) Configure(PIO *pio.PIO, cfg RMIIRxConfig) error {
+ 		return errors.New("IRQSource index out of range (0-7)")
+ 	}
+ 
+-	whole, frac, err := pio.ClkDivFromFrequency(cfg.Baud, machine.CPUFrequency())
+-	if err != nil {
+-		return err
++	if cfg.RefClk == 0 || cfg.RefClk > 31 {
++		return errors.New("RMIIRx: RefClk pin must be set and in range 1-31")
++	}
++	// The read loop is 4 instructions per 20 ns dibit (wait 1 + wait 0 + in +
++	// jmp), so the state machine needs at least 4 cycles per RefClk period.
++	const rmiiClk = 50_000_000
++	if machine.CPUFrequency() < 4*rmiiClk {
++		return errors.New("RMIIRx: CPU frequency below 200 MHz cannot keep up with RefClk-aligned RX")
+ 	}
+ 	const (
+ 		idxRX0 = iota
+ 		idxRX1
+ 		idxCRSDV
+ 
+-		polRising = true
+-		labelLoop = 2
++		polRising  = true
++		polFalling = false
++		labelLoop  = 3
+ 	)
+ 
+ 	asm := pio.AssemblerV0{SidesetBits: 0}
+@@ -63,8 +74,18 @@ func (r *RMIIRx) Configure(PIO *pio.PIO, cfg RMIIRxConfig) error {
+ 			Copyright (c) 2021 Sandeep Mistry
+ 		*/
+ 		asm.WaitPin(polRising, idxCRSDV).Encode(),
+-		asm.WaitPin(polRising, idxRX1).Delay(1).Encode(), // Delay modified from rscott version, yields better results.
+-		labelLoop:// main read loop while CRSDV is high at byte boundary.
++		// Preamble dibits are all 01; RX1 first rises on the final SFD dibit
++		// (11), so this wait sets byte alignment independent of CRS_DV timing.
++		asm.WaitPin(polRising, idxRX1).Encode(),
++		// Consume the rest of the SFD cell so the loop's first sample is the
++		// first data dibit, entered on a known RefClk phase.
++		asm.WaitGPIO(polFalling, uint8(cfg.RefClk)).Encode(),
++		labelLoop:// One dibit per RefClk period; 4 cycles per 20 ns at 200 MHz, zero slack.
++		// The PHY drives RXD on the rising edge. Sampling after the falling
++		// edge (mid-cell) gives the marginal RXD1 rise the most settle time
++		// before the sample instant.
++		asm.WaitGPIO(polRising, uint8(cfg.RefClk)).Encode(),
++		asm.WaitGPIO(polFalling, uint8(cfg.RefClk)).Encode(),
+ 		asm.In(pio.InSrcPins, 2).Encode(),
+ 		asm.Jmp(pio.JmpPinInput, labelLoop).Encode(),
+ 		// Pull in another dibit just in case we desynced by a tidbit. If no desync happened is itty bitty harmless.
+@@ -89,13 +110,16 @@ func (r *RMIIRx) Configure(PIO *pio.PIO, cfg RMIIRxConfig) error {
+ 		pin := rxPin + i
+ 		pin.Configure(pinCfg)
+ 	}
++	cfg.RefClk.Configure(pinCfg)
+ 	// Create state machine configuration
+ 	rxcfg := asm.DefaultStateMachineConfig(rxoff, rxprog[:])
+ 	rxcfg.SetInPins(rxPin, 2)         // IN pins: RX0, RX1 at rxPin
+ 	rxcfg.SetJmpPin(rxPin + idxCRSDV) // JMP pin: CRS_DV at rxPin+2
+ 	rxcfg.SetInShift(true, true, 8)   // In shift: right shift, autopush enabled, threshold 8 bits (1 byte)
+ 	rxcfg.SetFIFOJoin(pio.FifoJoinRx)
+-	rxcfg.SetClkDivIntFrac(whole, frac)
++	// Full CPU clock: pacing comes from the RefClk waits, so there is no
++	// baud-derived divider and no fractional-divider jitter.
++	rxcfg.SetClkDivIntFrac(1, 0)
+ 	// Initialize SM at start of program
+ 	rxSM.Init(rxoff, rxcfg)
+ 	// Set RX pins as inputs (pindirs = 0 for input)
