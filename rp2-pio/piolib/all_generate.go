@@ -18,6 +18,11 @@ var (
 	errBusy              = errors.New("piolib:busy")
 
 	errDMAUnavail = errors.New("piolib:DMA channel unavailable")
+
+	// errAsyncRequiresDMA is returned by asynchronous Tx helpers when DMA is
+	// not enabled, since there is no non-blocking way to feed the TX FIFO
+	// from software alone.
+	errAsyncRequiresDMA = errors.New("piolib:async transfer requires DMA to be enabled")
 )
 
 //go:generate pioasm -o go parallel8.pio         parallel8_pio.go
@@ -96,4 +101,45 @@ func helperPushUntilStall[T uint8 | uint16 | uint32](sm pio.StateMachine, dma dm
 		gosched() // Block until empty.
 	}
 	return nil
+}
+
+// helperPushStart begins an asynchronous, DMA-backed push of buf into the
+// state machine's TX FIFO and returns immediately, without waiting for the
+// transfer to complete. DMA must already be enabled on dma (see
+// [dmaChannel.helperEnableDMA]); errAsyncRequiresDMA is returned otherwise.
+// It is the caller's responsibility to ensure no other transfer is already
+// in flight on sm/dma before calling helperPushStart; see [helperPushBusy].
+//
+// buf must not be modified, reused for another transfer, or allowed to go out
+// of scope until the transfer completes (see [helperPushBusy] and
+// [helperPushWait]), since the DMA engine reads directly from its backing
+// array in the background.
+func helperPushStart[T uint8 | uint16 | uint32](sm pio.StateMachine, dma dmaChannel, buf []T) error {
+	if !dma.helperIsEnabled() {
+		return errAsyncRequiresDMA
+	}
+	if len(buf) == 0 {
+		return nil // Nothing to do; TX-stalled flag already reads true.
+	}
+	sm.ClearTxStalled()
+	dreq := dmaPIO_TxDREQ(sm)
+	return dmaPushStart(dma, (*T)(unsafe.Pointer(sm.TxReg())), buf, dreq)
+}
+
+// helperPushBusy reports whether an asynchronous transfer started by
+// [helperPushStart] is still in progress. Completion requires both the DMA
+// channel to have finished moving data and the state machine to have drained
+// its TX FIFO out to the pins (TX-stall), since the two can complete a few
+// PIO cycles apart.
+func helperPushBusy(sm pio.StateMachine, dma dmaChannel) bool {
+	return dma.busy() || !sm.HasTxStalled()
+}
+
+// helperPushWait blocks until an asynchronous transfer started by
+// [helperPushStart] has fully completed, i.e. [helperPushBusy] returns false.
+// It is safe to call even if no asynchronous transfer is pending.
+func helperPushWait(sm pio.StateMachine, dma dmaChannel) {
+	for helperPushBusy(sm, dma) {
+		gosched()
+	}
 }
