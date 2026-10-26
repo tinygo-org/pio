@@ -37,17 +37,30 @@ func (st *ST7789) SetBacklight(on bool) {
 	if st.bl == machine.NoPin {
 		return
 	}
-	pwm := machine.PWM1 // LCD LED on Tufty2040 corresponds to PWM1.
-	pwm.Configure(machine.PWMConfig{})
-	ch, err := pwm.Channel(st.bl)
-	if err != nil {
+	if err := configureBacklight(st.bl, on); err != nil {
 		return
+	}
+}
+
+type backlightPWM interface {
+	Configure(machine.PWMConfig) error
+	Channel(machine.Pin) (uint8, error)
+	Set(uint8, uint32)
+	Top() uint32
+}
+
+func configureBacklightPWM(pwm backlightPWM, pin machine.Pin, on bool) error {
+	pwm.Configure(machine.PWMConfig{})
+	ch, err := pwm.Channel(pin)
+	if err != nil {
+		return err
 	}
 	if on {
 		pwm.Set(ch, pwm.Top()) // full brightness
-		return
+		return nil
 	}
 	pwm.Set(ch, 0) // off
+	return nil
 }
 
 func (st *ST7789) CommonInit() {

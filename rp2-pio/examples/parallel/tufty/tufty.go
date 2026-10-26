@@ -10,28 +10,6 @@ import (
 	"github.com/tinygo-org/pio/rp2-pio/piolib"
 )
 
-// Pimoroni Tufty definitions https://tinygo.org/docs/reference/microcontrollers/tufty2040/
-const (
-	csPin  = machine.GPIO10 // LCD_CS
-	dcPin  = machine.GPIO11 // LCD_DC
-	wrPin  = machine.GPIO12 // LCD_WR
-	db0Pin = machine.GPIO14 // LCD_DB0..DB7 = GPIO14..GPIO21
-	rdPin  = machine.GPIO13 // LCD_RD
-	blPin  = machine.GPIO2  // LCD_BACKLIGHT
-)
-
-// busBaud controls the PIO parallel bus clock rate driving WR.
-//
-// The parallel PIO program in piolib is three instructions long, so the PIO
-// state machine clock runs at 3 * busBaud. The ST7789 8080-II parallel
-// interface specifies a minimum write cycle of 66 ns (~15.15 MHz), and
-// 15 MHz has been verified visually clean on a Tufty 2040 panel — we run
-// right at the datasheet ceiling because the bouncing-rect demo is
-// bus-limited and the extra ~9% throughput is worth having. Measured on
-// hardware: ~37 FPS @ 12.5 MHz, ~42 FPS @ 15 MHz with a full 320x240x16bpp
-// framebuffer transfer every frame.
-const busBaud = 15_000_000
-
 // Compile-time assertion that ST7789 satisfies our local Displayer contract.
 // The signatures match tinygo.org/x/drivers.Displayer byte-for-byte so
 // downstream code can substitute that interface without changes here.
@@ -46,6 +24,8 @@ var framebuffer [displayW * displayH * 2]byte
 var display ST7789
 
 func main() {
+	configureBoard()
+
 	// Configure control pins to safe idle levels BEFORE bringing up the PIO
 	// parallel bus. If CS or DC are floating while the PIO state machine
 	// starts and puts its initial (zeroed) OSR contents on the bus, the panel
